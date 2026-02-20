@@ -38,9 +38,15 @@ fn main() {
         .run();
 }
 
-fn close_on_escape(keys: Res<ButtonInput<KeyCode>>, mut exit: EventWriter<AppExit>) {
+fn close_on_escape(
+    mut commands: Commands,
+    keys: Res<ButtonInput<KeyCode>>,
+    windows: Query<Entity, With<Window>>,
+) {
     if keys.just_pressed(KeyCode::Escape) {
-        exit.write(AppExit::Success);
+        for entity in &windows {
+            commands.entity(entity).despawn();
+        }
     }
 }
 
