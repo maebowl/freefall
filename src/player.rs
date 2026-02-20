@@ -10,6 +10,8 @@ const DASH_DURATION: f32 = 0.15;
 const COYOTE_TIME: f32 = 0.1;
 const ACCEL: f32 = 600.0;
 const DECEL: f32 = 400.0;
+const AIR_ACCEL: f32 = 200.0;
+const AIR_DECEL: f32 = 100.0;
 
 #[derive(Default, Component)]
 pub struct Player;
@@ -186,8 +188,16 @@ fn player_movement(
         } else {
             WALK_SPEED
         };
-        let target_vx = move_x * speed;
-        let accel = if move_x.abs() > 0.1 { ACCEL } else { DECEL };
+        let mut target_vx = move_x * speed;
+        // In the air, don't slow down below current speed if holding the same direction
+        if !state.grounded && move_x.abs() > 0.1 && move_x.signum() == velocity.x.signum() {
+            target_vx = target_vx.signum() * target_vx.abs().max(velocity.x.abs());
+        }
+        let accel = if state.grounded {
+            if move_x.abs() > 0.1 { ACCEL } else { DECEL }
+        } else {
+            if move_x.abs() > 0.1 { AIR_ACCEL } else { AIR_DECEL }
+        };
         let diff = target_vx - velocity.x;
         let change = accel * dt;
         if diff.abs() <= change {
