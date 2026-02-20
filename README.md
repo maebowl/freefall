@@ -45,7 +45,7 @@ For playable performance, dependencies are optimized even in dev builds (`[profi
 |--------|---------|----------|
 | Move | Left Stick | A/D or Arrow Keys |
 | Jump | South (A) | Space |
-| Dash | East (B) | E |
+| Dash | West (X) | E |
 | Sprint | RT | Left Shift |
 
 - **Variable jump**: release jump early for a shorter hop
