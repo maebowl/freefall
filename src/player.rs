@@ -158,11 +158,14 @@ fn player_movement(
     let jump_released = gp_jump_released || kb_jump_released;
     let dash_pressed = gp_dash || kb_dash;
 
-    // Dash initiation — eight-way, once per ground touch
+    // Dash initiation — snapped to 8 directions, once per ground touch
     if dash_pressed && state.has_air_dash && !state.dashing {
         let raw = Vec2::new(move_x, move_y);
         let dir = if raw.length_squared() > 0.01 {
-            raw.normalize()
+            // Snap to nearest 8-way direction
+            let angle = raw.y.atan2(raw.x);
+            let snapped = (angle / std::f32::consts::FRAC_PI_4).round() * std::f32::consts::FRAC_PI_4;
+            Vec2::new(snapped.cos(), snapped.sin())
         } else {
             Vec2::new(state.facing, 0.0)
         };
