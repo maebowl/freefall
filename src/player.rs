@@ -8,8 +8,8 @@ const JUMP_VELOCITY: f32 = 300.0;
 const DASH_SPEED: f32 = 400.0;
 const DASH_DURATION: f32 = 0.15;
 const COYOTE_TIME: f32 = 0.1;
-const ACCEL: f32 = 800.0;
-const DECEL: f32 = 1200.0;
+const ACCEL: f32 = 600.0;
+const DECEL: f32 = 400.0;
 
 #[derive(Default, Component)]
 pub struct Player;
@@ -179,12 +179,9 @@ fn player_movement(
         if state.dash_timer <= 0.0 {
             state.dashing = false;
             gravity_scale.0 = 1.0;
-            // Kill residual velocity so upward dashes don't launch further than sideways
-            velocity.x = state.dash_dir.x * WALK_SPEED;
-            velocity.y = 0.0;
         }
     } else {
-        let speed = if sprint {
+        let speed = if sprint && state.grounded {
             WALK_SPEED * SPRINT_MULTIPLIER
         } else {
             WALK_SPEED
