@@ -14,6 +14,10 @@ const DECEL: f32 = 400.0;
 const OVERSPEED_DECEL: f32 = 150.0;
 const AIR_ACCEL: f32 = 300.0;
 const AIR_DECEL: f32 = 150.0;
+const WALL_JUMP_H: f32 = 200.0;
+const WALL_JUMP_V: f32 = 280.0;
+const WALL_SLIDE_SPEED: f32 = 60.0;
+const WALL_COYOTE_TIME: f32 = 0.08;
 
 #[derive(Default, Component)]
 pub struct Player;
@@ -28,6 +32,8 @@ pub struct PlayerState {
     pub dash_dir: Vec2,
     pub coyote_timer: f32,
     pub jump_buffer: f32,
+    pub wall_dir: f32,
+    pub wall_coyote: f32,
 }
 
 impl Default for PlayerState {
@@ -41,6 +47,8 @@ impl Default for PlayerState {
             dash_dir: Vec2::X,
             coyote_timer: 0.0,
             jump_buffer: 0.0,
+            wall_dir: 0.0,
+            wall_coyote: 0.0,
         }
     }
 }
@@ -106,6 +114,33 @@ fn ground_detection(
             if state.coyote_timer <= 0.0 {
                 state.grounded = false;
             }
+        }
+
+        // Wall detection — cast rays from left and right sides
+        let center = transform.translation.truncate();
+        let wall_left = spatial_query
+            .cast_ray(center, Dir2::NEG_X, 9.0, true, &filter)
+            .is_some();
+        let wall_right = spatial_query
+            .cast_ray(center, Dir2::X, 9.0, true, &filter)
+            .is_some();
+
+        if !state.grounded {
+            if wall_left {
+                state.wall_dir = -1.0;
+                state.wall_coyote = WALL_COYOTE_TIME;
+            } else if wall_right {
+                state.wall_dir = 1.0;
+                state.wall_coyote = WALL_COYOTE_TIME;
+            } else {
+                state.wall_coyote -= time.delta_secs();
+                if state.wall_coyote <= 0.0 {
+                    state.wall_dir = 0.0;
+                }
+            }
+        } else {
+            state.wall_dir = 0.0;
+            state.wall_coyote = 0.0;
         }
     }
 }
@@ -187,20 +222,25 @@ fn player_movement(
     }
     let want_jump = state.jump_buffer > 0.0;
 
-    // Jump — can cancel an active dash when grounded (wavedash/super dash)
-    // Dash horizontal momentum is preserved into the jump
+    // Jump — ground jump, wavedash, or wall jump
     if want_jump && state.grounded {
         if state.dashing {
-            // Wavedash / super: cancel dash, keep horizontal momentum
             state.dashing = false;
             gravity_scale.0 = 1.0;
-            // Preserve dash horizontal speed as launch speed
             velocity.x = state.dash_dir.x * DASH_SPEED;
         }
         velocity.y = JUMP_VELOCITY;
         state.grounded = false;
         state.coyote_timer = 0.0;
         state.jump_buffer = 0.0;
+    } else if want_jump && state.wall_dir != 0.0 && !state.dashing {
+        // Wall jump — kick away from wall
+        velocity.x = -state.wall_dir * WALL_JUMP_H;
+        velocity.y = WALL_JUMP_V;
+        state.wall_dir = 0.0;
+        state.wall_coyote = 0.0;
+        state.jump_buffer = 0.0;
+        state.has_air_dash = true;
     }
     if jump_released && velocity.y > 0.0 {
         velocity.y *= 0.5;
@@ -245,6 +285,11 @@ fn player_movement(
             velocity.x += change * diff.signum();
         }
         gravity_scale.0 = 1.0;
+    }
+
+    // Wall slide — cap fall speed when touching a wall
+    if state.wall_dir != 0.0 && velocity.y < -WALL_SLIDE_SPEED {
+        velocity.y = -WALL_SLIDE_SPEED;
     }
 
     // Track facing direction
