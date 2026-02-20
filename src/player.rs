@@ -8,6 +8,7 @@ const JUMP_VELOCITY: f32 = 300.0;
 const DASH_SPEED: f32 = 400.0;
 const DASH_DURATION: f32 = 0.15;
 const DASH_COOLDOWN: f32 = 0.5;
+const COYOTE_TIME: f32 = 0.1;
 
 #[derive(Default, Component)]
 pub struct Player;
@@ -19,7 +20,8 @@ pub struct PlayerState {
     pub dashing: bool,
     pub dash_timer: f32,
     pub dash_cooldown: f32,
-    pub dash_dir: f32,
+    pub dash_dir: Vec2,
+    pub coyote_timer: f32,
 }
 
 impl Default for PlayerState {
@@ -30,7 +32,8 @@ impl Default for PlayerState {
             dashing: false,
             dash_timer: 0.0,
             dash_cooldown: 0.0,
-            dash_dir: 1.0,
+            dash_dir: Vec2::X,
+            coyote_timer: 0.0,
         }
     }
 }
@@ -70,13 +73,32 @@ fn setup_player(mut commands: Commands, query: Query<Entity, Added<Player>>) {
 fn ground_detection(
     spatial_query: SpatialQuery,
     mut query: Query<(Entity, &Transform, &mut PlayerState), With<Player>>,
+    time: Res<Time>,
 ) {
     for (entity, transform, mut state) in &mut query {
-        let origin = transform.translation.truncate() + Vec2::new(0.0, -7.0);
+        let base = transform.translation.truncate() + Vec2::new(0.0, -7.0);
         let filter = SpatialQueryFilter::default().with_excluded_entities([entity]);
-        state.grounded = spatial_query
-            .cast_ray(origin, Dir2::NEG_Y, 3.0, true, &filter)
-            .is_some();
+
+        // Cast 3 rays: center, left edge, right edge for reliable edge detection
+        let hit = spatial_query
+            .cast_ray(base, Dir2::NEG_Y, 3.0, true, &filter)
+            .is_some()
+            || spatial_query
+                .cast_ray(base + Vec2::new(-6.0, 0.0), Dir2::NEG_Y, 3.0, true, &filter)
+                .is_some()
+            || spatial_query
+                .cast_ray(base + Vec2::new(6.0, 0.0), Dir2::NEG_Y, 3.0, true, &filter)
+                .is_some();
+
+        if hit {
+            state.grounded = true;
+            state.coyote_timer = COYOTE_TIME;
+        } else {
+            state.coyote_timer -= time.delta_secs();
+            if state.coyote_timer <= 0.0 {
+                state.grounded = false;
+            }
+        }
     }
 }
 
@@ -96,6 +118,7 @@ fn player_movement(
     // Gamepad input
     let gamepad = gamepads.iter().next();
     let stick_x = gamepad.map(|g| g.left_stick().x).unwrap_or(0.0);
+    let stick_y = gamepad.map(|g| g.left_stick().y).unwrap_or(0.0);
     let gp_sprint =
         gamepad.is_some_and(|g| g.get(GamepadButton::LeftTrigger2).unwrap_or(0.0) > 0.5);
     let gp_jump_pressed = gamepad.is_some_and(|g| g.just_pressed(GamepadButton::South));
@@ -110,6 +133,13 @@ fn player_movement(
     } else {
         0.0
     };
+    let kb_y = if keys.pressed(KeyCode::ArrowUp) || keys.pressed(KeyCode::KeyW) {
+        1.0
+    } else if keys.pressed(KeyCode::ArrowDown) || keys.pressed(KeyCode::KeyS) {
+        -1.0
+    } else {
+        0.0
+    };
     let kb_sprint = keys.pressed(KeyCode::ShiftLeft);
     let kb_jump_pressed = keys.just_pressed(KeyCode::Space);
     let kb_jump_released = keys.just_released(KeyCode::Space);
@@ -117,6 +147,7 @@ fn player_movement(
 
     // Merge inputs
     let move_x = if stick_x.abs() > 0.1 { stick_x } else { kb_x };
+    let move_y = if stick_y.abs() > 0.1 { stick_y } else { kb_y };
     let sprint = gp_sprint || kb_sprint;
     let jump_pressed = gp_jump_pressed || kb_jump_pressed;
     let jump_released = gp_jump_released || kb_jump_released;
@@ -125,22 +156,24 @@ fn player_movement(
     // Update dash cooldown
     state.dash_cooldown = (state.dash_cooldown - time.delta_secs()).max(0.0);
 
-    // Dash initiation
+    // Dash initiation — eight-way using stick/key direction
     if dash_pressed && state.dash_cooldown <= 0.0 && !state.dashing {
+        let raw = Vec2::new(move_x, move_y);
+        let dir = if raw.length_squared() > 0.01 {
+            raw.normalize()
+        } else {
+            Vec2::new(state.facing, 0.0)
+        };
         state.dashing = true;
         state.dash_timer = DASH_DURATION;
         state.dash_cooldown = DASH_COOLDOWN;
-        state.dash_dir = if move_x.abs() > 0.1 {
-            move_x.signum()
-        } else {
-            state.facing
-        };
+        state.dash_dir = dir;
     }
 
     // Movement
     if state.dashing {
-        velocity.x = state.dash_dir * DASH_SPEED;
-        velocity.y = 0.0;
+        velocity.x = state.dash_dir.x * DASH_SPEED;
+        velocity.y = state.dash_dir.y * DASH_SPEED;
         gravity_scale.0 = 0.0;
         state.dash_timer -= time.delta_secs();
         if state.dash_timer <= 0.0 {
@@ -157,9 +190,11 @@ fn player_movement(
         gravity_scale.0 = 1.0;
     }
 
-    // Jump
+    // Jump (with coyote time)
     if jump_pressed && state.grounded && !state.dashing {
         velocity.y = JUMP_VELOCITY;
+        state.grounded = false;
+        state.coyote_timer = 0.0;
     }
     if jump_released && velocity.y > 0.0 {
         velocity.y *= 0.5;
