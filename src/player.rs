@@ -10,6 +10,7 @@ const DASH_DURATION: f32 = 0.15;
 const COYOTE_TIME: f32 = 0.1;
 const ACCEL: f32 = 600.0;
 const DECEL: f32 = 400.0;
+const OVERSPEED_DECEL: f32 = 150.0;
 const AIR_ACCEL: f32 = 200.0;
 const AIR_DECEL: f32 = 100.0;
 
@@ -193,8 +194,13 @@ fn player_movement(
         if !state.grounded && move_x.abs() > 0.1 && move_x.signum() == velocity.x.signum() {
             target_vx = target_vx.signum() * target_vx.abs().max(velocity.x.abs());
         }
+        let overspeed = velocity.x.abs() > speed && move_x.signum() == velocity.x.signum();
         let accel = if state.grounded {
-            if move_x.abs() > 0.1 { ACCEL } else { DECEL }
+            if move_x.abs() > 0.1 {
+                if overspeed { OVERSPEED_DECEL } else { ACCEL }
+            } else {
+                DECEL
+            }
         } else {
             if move_x.abs() > 0.1 { AIR_ACCEL } else { AIR_DECEL }
         };
