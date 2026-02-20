@@ -34,7 +34,14 @@ fn main() {
             camera::CameraPlugin,
         ))
         .add_systems(Startup, setup)
+        .add_systems(Update, close_on_escape)
         .run();
+}
+
+fn close_on_escape(keys: Res<ButtonInput<KeyCode>>, mut exit: EventWriter<AppExit>) {
+    if keys.just_pressed(KeyCode::Escape) {
+        exit.write(AppExit::Success);
+    }
 }
 
 fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
