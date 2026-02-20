@@ -31,6 +31,12 @@ sudo dnf install wayland-devel libxkbcommon-devel libudev-devel alsa-lib-devel v
 cargo run
 ```
 
+Pull latest changes and run in one command:
+
+```sh
+git pull && cargo run
+```
+
 For playable performance, dependencies are optimized even in dev builds (`[profile.dev.package."*"] opt-level = 2` in Cargo.toml). The first build will be slow; subsequent rebuilds are fast.
 
 ## Controls
@@ -43,4 +49,5 @@ For playable performance, dependencies are optimized even in dev builds (`[profi
 | Sprint | LT | Left Shift |
 
 - **Variable jump**: release jump early for a shorter hop
-- **Dash**: horizontal burst with 0.5s cooldown; briefly disables gravity
+- **Dash**: eight-way burst with 0.5s cooldown; briefly disables gravity
+- **Coyote time**: short grace period to jump after walking off an edge
