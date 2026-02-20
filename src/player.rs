@@ -8,6 +8,7 @@ const JUMP_VELOCITY: f32 = 300.0;
 const DASH_SPEED: f32 = 300.0;
 const DASH_DURATION: f32 = 0.12;
 const COYOTE_TIME: f32 = 0.1;
+const JUMP_BUFFER: f32 = 0.1;
 const ACCEL: f32 = 600.0;
 const DECEL: f32 = 400.0;
 const OVERSPEED_DECEL: f32 = 150.0;
@@ -26,6 +27,7 @@ pub struct PlayerState {
     pub has_air_dash: bool,
     pub dash_dir: Vec2,
     pub coyote_timer: f32,
+    pub jump_buffer: f32,
 }
 
 impl Default for PlayerState {
@@ -38,6 +40,7 @@ impl Default for PlayerState {
             has_air_dash: true,
             dash_dir: Vec2::X,
             coyote_timer: 0.0,
+            jump_buffer: 0.0,
         }
     }
 }
@@ -175,8 +178,35 @@ fn player_movement(
         state.dash_dir = dir;
     }
 
-    // Movement
+    // Jump buffer
     let dt = time.delta_secs();
+    if jump_pressed {
+        state.jump_buffer = JUMP_BUFFER;
+    } else {
+        state.jump_buffer = (state.jump_buffer - dt).max(0.0);
+    }
+    let want_jump = state.jump_buffer > 0.0;
+
+    // Jump — can cancel an active dash when grounded (wavedash/super dash)
+    // Dash horizontal momentum is preserved into the jump
+    if want_jump && state.grounded {
+        if state.dashing {
+            // Wavedash / super: cancel dash, keep horizontal momentum
+            state.dashing = false;
+            gravity_scale.0 = 1.0;
+            // Preserve dash horizontal speed as launch speed
+            velocity.x = state.dash_dir.x * DASH_SPEED;
+        }
+        velocity.y = JUMP_VELOCITY;
+        state.grounded = false;
+        state.coyote_timer = 0.0;
+        state.jump_buffer = 0.0;
+    }
+    if jump_released && velocity.y > 0.0 {
+        velocity.y *= 0.5;
+    }
+
+    // Movement
     if state.dashing {
         velocity.x = state.dash_dir.x * DASH_SPEED;
         velocity.y = state.dash_dir.y * DASH_SPEED;
@@ -215,16 +245,6 @@ fn player_movement(
             velocity.x += change * diff.signum();
         }
         gravity_scale.0 = 1.0;
-    }
-
-    // Jump (with coyote time)
-    if jump_pressed && state.grounded && !state.dashing {
-        velocity.y = JUMP_VELOCITY;
-        state.grounded = false;
-        state.coyote_timer = 0.0;
-    }
-    if jump_released && velocity.y > 0.0 {
-        velocity.y *= 0.5;
     }
 
     // Track facing direction
