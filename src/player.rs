@@ -7,8 +7,9 @@ const SPRINT_MULTIPLIER: f32 = 1.8;
 const JUMP_VELOCITY: f32 = 300.0;
 const DASH_SPEED: f32 = 400.0;
 const DASH_DURATION: f32 = 0.15;
-const DASH_COOLDOWN: f32 = 0.5;
 const COYOTE_TIME: f32 = 0.1;
+const ACCEL: f32 = 800.0;
+const DECEL: f32 = 1200.0;
 
 #[derive(Default, Component)]
 pub struct Player;
@@ -19,7 +20,7 @@ pub struct PlayerState {
     pub facing: f32,
     pub dashing: bool,
     pub dash_timer: f32,
-    pub dash_cooldown: f32,
+    pub has_air_dash: bool,
     pub dash_dir: Vec2,
     pub coyote_timer: f32,
 }
@@ -31,7 +32,7 @@ impl Default for PlayerState {
             facing: 1.0,
             dashing: false,
             dash_timer: 0.0,
-            dash_cooldown: 0.0,
+            has_air_dash: true,
             dash_dir: Vec2::X,
             coyote_timer: 0.0,
         }
@@ -92,6 +93,7 @@ fn ground_detection(
 
         if hit {
             state.grounded = true;
+            state.has_air_dash = true;
             state.coyote_timer = COYOTE_TIME;
         } else {
             state.coyote_timer -= time.delta_secs();
@@ -153,11 +155,8 @@ fn player_movement(
     let jump_released = gp_jump_released || kb_jump_released;
     let dash_pressed = gp_dash || kb_dash;
 
-    // Update dash cooldown
-    state.dash_cooldown = (state.dash_cooldown - time.delta_secs()).max(0.0);
-
-    // Dash initiation — eight-way using stick/key direction
-    if dash_pressed && state.dash_cooldown <= 0.0 && !state.dashing {
+    // Dash initiation — eight-way, once per ground touch
+    if dash_pressed && state.has_air_dash && !state.dashing {
         let raw = Vec2::new(move_x, move_y);
         let dir = if raw.length_squared() > 0.01 {
             raw.normalize()
@@ -166,19 +165,23 @@ fn player_movement(
         };
         state.dashing = true;
         state.dash_timer = DASH_DURATION;
-        state.dash_cooldown = DASH_COOLDOWN;
+        state.has_air_dash = false;
         state.dash_dir = dir;
     }
 
     // Movement
+    let dt = time.delta_secs();
     if state.dashing {
         velocity.x = state.dash_dir.x * DASH_SPEED;
         velocity.y = state.dash_dir.y * DASH_SPEED;
         gravity_scale.0 = 0.0;
-        state.dash_timer -= time.delta_secs();
+        state.dash_timer -= dt;
         if state.dash_timer <= 0.0 {
             state.dashing = false;
             gravity_scale.0 = 1.0;
+            // Kill residual velocity so upward dashes don't launch further than sideways
+            velocity.x = state.dash_dir.x * WALK_SPEED;
+            velocity.y = 0.0;
         }
     } else {
         let speed = if sprint {
@@ -186,7 +189,15 @@ fn player_movement(
         } else {
             WALK_SPEED
         };
-        velocity.x = move_x * speed;
+        let target_vx = move_x * speed;
+        let accel = if move_x.abs() > 0.1 { ACCEL } else { DECEL };
+        let diff = target_vx - velocity.x;
+        let change = accel * dt;
+        if diff.abs() <= change {
+            velocity.x = target_vx;
+        } else {
+            velocity.x += change * diff.signum();
+        }
         gravity_scale.0 = 1.0;
     }
 
