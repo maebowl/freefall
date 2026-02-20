@@ -5,14 +5,14 @@ use bevy_ecs_ldtk::prelude::*;
 const WALK_SPEED: f32 = 120.0;
 const SPRINT_MULTIPLIER: f32 = 1.8;
 const JUMP_VELOCITY: f32 = 300.0;
-const DASH_SPEED: f32 = 400.0;
-const DASH_DURATION: f32 = 0.15;
+const DASH_SPEED: f32 = 300.0;
+const DASH_DURATION: f32 = 0.12;
 const COYOTE_TIME: f32 = 0.1;
 const ACCEL: f32 = 600.0;
 const DECEL: f32 = 400.0;
 const OVERSPEED_DECEL: f32 = 150.0;
-const AIR_ACCEL: f32 = 200.0;
-const AIR_DECEL: f32 = 100.0;
+const AIR_ACCEL: f32 = 300.0;
+const AIR_DECEL: f32 = 150.0;
 
 #[derive(Default, Component)]
 pub struct Player;
@@ -125,7 +125,7 @@ fn player_movement(
     let stick_x = gamepad.map(|g| g.left_stick().x).unwrap_or(0.0);
     let stick_y = gamepad.map(|g| g.left_stick().y).unwrap_or(0.0);
     let gp_sprint =
-        gamepad.is_some_and(|g| g.get(GamepadButton::LeftTrigger2).unwrap_or(0.0) > 0.5);
+        gamepad.is_some_and(|g| g.get(GamepadButton::RightTrigger2).unwrap_or(0.0) > 0.5);
     let gp_jump_pressed = gamepad.is_some_and(|g| g.just_pressed(GamepadButton::South));
     let gp_jump_released = gamepad.is_some_and(|g| g.just_released(GamepadButton::South));
     let gp_dash = gamepad.is_some_and(|g| g.just_pressed(GamepadButton::East));

@@ -46,8 +46,8 @@ For playable performance, dependencies are optimized even in dev builds (`[profi
 | Move | Left Stick | A/D or Arrow Keys |
 | Jump | South (A) | Space |
 | Dash | East (B) | E |
-| Sprint | LT | Left Shift |
+| Sprint | RT | Left Shift |
 
 - **Variable jump**: release jump early for a shorter hop
-- **Dash**: eight-way burst with 0.5s cooldown; briefly disables gravity
+- **Dash**: eight-way burst, once per ground touch; briefly disables gravity
 - **Coyote time**: short grace period to jump after walking off an edge
