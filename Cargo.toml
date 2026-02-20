@@ -7,6 +7,7 @@ edition = "2021"
 bevy = "0.18"
 bevy_ecs_ldtk = "0.14"
 avian2d = "0.5"
+bevy_embedded_assets = "0.15"
 
 # Optimize dependencies in dev builds for playable performance
 [profile.dev.package."*"]

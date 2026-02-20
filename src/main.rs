@@ -4,10 +4,12 @@ mod walls;
 
 use avian2d::prelude::*;
 use bevy::prelude::*;
+use bevy_embedded_assets::EmbeddedAssetPlugin;
 use bevy_ecs_ldtk::prelude::*;
 
 fn main() {
     App::new()
+        .add_plugins(EmbeddedAssetPlugin::default())
         .add_plugins(
             DefaultPlugins
                 .set(WindowPlugin {
@@ -18,11 +20,7 @@ fn main() {
                     }),
                     ..default()
                 })
-                .set(ImagePlugin::default_nearest())
-                .set(AssetPlugin {
-                    file_path: ".".into(),
-                    ..default()
-                }),
+                .set(ImagePlugin::default_nearest()),
         )
         .add_plugins(LdtkPlugin)
         .add_plugins(PhysicsPlugins::default().with_length_unit(16.0))
