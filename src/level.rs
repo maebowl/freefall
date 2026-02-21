@@ -5,6 +5,7 @@ use bevy::prelude::*;
 use rand::Rng;
 
 use crate::player::{spawn_player, Player};
+use crate::ui::{Leaderboard, SpeedrunTimer};
 use crate::walls::Wall;
 
 const TILE: f32 = 16.0;
@@ -17,6 +18,7 @@ const SECTION_COUNT: i32 = 8;
 #[derive(Debug, Clone, Copy, Default, Eq, PartialEq, Hash, States)]
 pub enum GamePhase {
     #[default]
+    TitleScreen,
     Generating,
     Playing,
     Transitioning,
@@ -574,6 +576,9 @@ fn checkpoint_collision(
     player_query: Query<Entity, With<Player>>,
     checkpoint_query: Query<Entity, With<Checkpoint>>,
     mut next_state: ResMut<NextState<GamePhase>>,
+    mut timer: ResMut<SpeedrunTimer>,
+    mut leaderboard: ResMut<Leaderboard>,
+    level_counter: Res<LevelCounter>,
 ) {
     let Ok(player) = player_query.single() else {
         return;
@@ -581,6 +586,15 @@ fn checkpoint_collision(
 
     for checkpoint in &checkpoint_query {
         if collisions.contains(player, checkpoint) {
+            // Stop timer and record time
+            if timer.final_time.is_none() {
+                timer.running = false;
+                timer.final_time = Some(timer.elapsed);
+                let times = leaderboard.times.entry(level_counter.0).or_default();
+                times.push(timer.elapsed);
+                times.sort_by(|a, b| a.partial_cmp(b).unwrap());
+                times.truncate(5);
+            }
             next_state.set(GamePhase::Transitioning);
             return;
         }

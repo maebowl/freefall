@@ -1,6 +1,7 @@
 mod camera;
 mod level;
 mod player;
+mod ui;
 mod walls;
 
 use avian2d::prelude::*;
@@ -26,6 +27,7 @@ fn main() {
             level::LevelPlugin,
             player::PlayerPlugin,
             camera::CameraPlugin,
+            ui::UiPlugin,
         ))
         .add_systems(Startup, setup)
         .add_systems(Update, close_on_escape)
