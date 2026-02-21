@@ -100,7 +100,7 @@ impl Plugin for PlayerPlugin {
     }
 }
 
-pub fn spawn_player(commands: &mut Commands, position: Vec2) {
+pub fn spawn_player(commands: &mut Commands, asset_server: &AssetServer, position: Vec2) {
     commands.spawn((
         Player,
         PlayerState::default(),
@@ -110,7 +110,7 @@ pub fn spawn_player(commands: &mut Commands, position: Vec2) {
         GravityScale(1.0),
         Friction::new(0.0),
         LockedAxes::ROTATION_LOCKED,
-        Sprite::from_color(Color::srgb(0.4, 0.7, 1.0), Vec2::splat(16.0)),
+        Sprite::from_image(asset_server.load("burningman.png")),
         Transform::from_translation(position.extend(0.0)),
     ));
 }

@@ -64,6 +64,7 @@ impl Plugin for ReplayPlugin {
 
 fn setup_replay(
     mut commands: Commands,
+    asset_server: Res<AssetServer>,
     replay_data: Res<ReplayData>,
     mut spawn_point: ResMut<SpawnPoint>,
     mut players: Query<(&mut Visibility, &mut Transform, &mut LinearVelocity), With<Player>>,
@@ -95,7 +96,11 @@ fn setup_replay(
         GravityScale(1.0),
         Friction::new(0.0),
         LockedAxes::ROTATION_LOCKED,
-        Sprite::from_color(Color::srgba(0.4, 0.7, 1.0, 0.6), Vec2::splat(16.0)),
+        Sprite {
+            image: asset_server.load("burningman.png"),
+            color: Color::srgba(1.0, 1.0, 1.0, 0.6),
+            ..default()
+        },
         Transform::from_translation(sp.extend(0.0)),
     ));
 

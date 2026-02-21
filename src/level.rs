@@ -201,6 +201,7 @@ pub fn build_level(
 
 fn generate_level(
     mut commands: Commands,
+    asset_server: Res<AssetServer>,
     mut spawn_point: ResMut<SpawnPoint>,
     mut next_state: ResMut<NextState<GamePhase>>,
     player_query: Query<Entity, With<Player>>,
@@ -223,7 +224,7 @@ fn generate_level(
 
     // Spawn player on first level
     if player_query.is_empty() {
-        spawn_player(&mut commands, spawn_point.0);
+        spawn_player(&mut commands, &asset_server, spawn_point.0);
     }
 
     next_state.set(GamePhase::Playing);
