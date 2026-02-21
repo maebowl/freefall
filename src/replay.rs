@@ -48,11 +48,17 @@ impl Plugin for ReplayPlugin {
                 OnExit(GamePhase::Replaying),
                 (cleanup_replay, despawn_replay_hud),
             )
+            // Ghost physics in FixedUpdate (matches recording rate)
             .add_systems(
-                Update,
-                (ghost_ground_detection, ghost_movement, check_replay_exit)
+                FixedUpdate,
+                (ghost_ground_detection, ghost_movement)
                     .chain()
                     .run_if(in_state(GamePhase::Replaying)),
+            )
+            // Exit check stays in Update (reads keyboard/gamepad)
+            .add_systems(
+                Update,
+                check_replay_exit.run_if(in_state(GamePhase::Replaying)),
             );
     }
 }

@@ -68,16 +68,35 @@ pub struct MergedInput {
     pub dash_pressed: bool,
 }
 
+/// Buffers input from Update (variable rate) for consumption in FixedUpdate.
+/// One-shot flags (jump/dash) accumulate until consumed by FixedUpdate.
+#[derive(Resource, Default)]
+pub struct BufferedInput {
+    pub move_x: f32,
+    pub move_y: f32,
+    pub sprint: bool,
+    pub jump_pressed: bool,
+    pub jump_released: bool,
+    pub dash_pressed: bool,
+}
+
 pub struct PlayerPlugin;
 
 impl Plugin for PlayerPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(
-            Update,
-            (ground_detection, player_movement)
-                .chain()
-                .run_if(in_state(GamePhase::Playing)),
-        );
+        app.init_resource::<BufferedInput>()
+            // Read real input devices in Update (where just_pressed works correctly)
+            .add_systems(
+                Update,
+                buffer_input.run_if(in_state(GamePhase::Playing)),
+            )
+            // Apply movement in FixedUpdate (same schedule as physics engine)
+            .add_systems(
+                FixedUpdate,
+                (ground_detection, player_movement)
+                    .chain()
+                    .run_if(in_state(GamePhase::Playing)),
+            );
     }
 }
 
@@ -94,6 +113,55 @@ pub fn spawn_player(commands: &mut Commands, position: Vec2) {
         Sprite::from_color(Color::srgb(0.4, 0.7, 1.0), Vec2::splat(16.0)),
         Transform::from_translation(position.extend(0.0)),
     ));
+}
+
+/// Runs in Update — reads keyboard/gamepad and buffers for FixedUpdate.
+/// Continuous values (move_x, move_y, sprint) are overwritten each frame.
+/// One-shot values (jump_pressed, etc.) are OR'd so they persist until consumed.
+fn buffer_input(
+    gamepads: Query<&Gamepad>,
+    keys: Res<ButtonInput<KeyCode>>,
+    mut buf: ResMut<BufferedInput>,
+) {
+    // Gamepad input
+    let gamepad = gamepads.iter().next();
+    let stick_x = gamepad.map(|g| g.left_stick().x).unwrap_or(0.0);
+    let stick_y = gamepad.map(|g| g.left_stick().y).unwrap_or(0.0);
+    let gp_walk =
+        gamepad.is_some_and(|g| g.get(GamepadButton::RightTrigger2).unwrap_or(0.0) > 0.5);
+    let gp_jump_pressed = gamepad.is_some_and(|g| g.just_pressed(GamepadButton::South));
+    let gp_jump_released = gamepad.is_some_and(|g| g.just_released(GamepadButton::South));
+    let gp_dash = gamepad.is_some_and(|g| g.just_pressed(GamepadButton::LeftTrigger2));
+
+    // Keyboard fallback
+    let kb_x = if keys.pressed(KeyCode::ArrowLeft) || keys.pressed(KeyCode::KeyA) {
+        -1.0
+    } else if keys.pressed(KeyCode::ArrowRight) || keys.pressed(KeyCode::KeyD) {
+        1.0
+    } else {
+        0.0
+    };
+    let kb_y = if keys.pressed(KeyCode::ArrowUp) || keys.pressed(KeyCode::KeyW) {
+        1.0
+    } else if keys.pressed(KeyCode::ArrowDown) || keys.pressed(KeyCode::KeyS) {
+        -1.0
+    } else {
+        0.0
+    };
+    let kb_walk = keys.pressed(KeyCode::ShiftLeft);
+    let kb_jump_pressed = keys.just_pressed(KeyCode::Space);
+    let kb_jump_released = keys.just_released(KeyCode::Space);
+    let kb_dash = keys.just_pressed(KeyCode::KeyE);
+
+    // Continuous values — overwrite each frame
+    buf.move_x = if stick_x.abs() > 0.1 { stick_x } else { kb_x };
+    buf.move_y = if stick_y.abs() > 0.1 { stick_y } else { kb_y };
+    buf.sprint = !(gp_walk || kb_walk);
+
+    // One-shot values — accumulate until FixedUpdate consumes them
+    buf.jump_pressed |= gp_jump_pressed || kb_jump_pressed;
+    buf.jump_released |= gp_jump_released || kb_jump_released;
+    buf.dash_pressed |= gp_dash || kb_dash;
 }
 
 fn ground_detection(
@@ -166,9 +234,9 @@ pub fn detect_ground_and_walls(
     }
 }
 
+/// Runs in FixedUpdate — consumes buffered input, applies movement, records for replay.
 fn player_movement(
-    gamepads: Query<&Gamepad>,
-    keys: Res<ButtonInput<KeyCode>>,
+    mut buf: ResMut<BufferedInput>,
     mut players: Query<
         (&mut LinearVelocity, &mut GravityScale, &mut PlayerState),
         With<Player>,
@@ -180,47 +248,22 @@ fn player_movement(
         return;
     };
 
-    // Gamepad input
-    let gamepad = gamepads.iter().next();
-    let stick_x = gamepad.map(|g| g.left_stick().x).unwrap_or(0.0);
-    let stick_y = gamepad.map(|g| g.left_stick().y).unwrap_or(0.0);
-    let gp_walk =
-        gamepad.is_some_and(|g| g.get(GamepadButton::RightTrigger2).unwrap_or(0.0) > 0.5);
-    let gp_jump_pressed = gamepad.is_some_and(|g| g.just_pressed(GamepadButton::South));
-    let gp_jump_released = gamepad.is_some_and(|g| g.just_released(GamepadButton::South));
-    let gp_dash = gamepad.is_some_and(|g| g.just_pressed(GamepadButton::LeftTrigger2));
-
-    // Keyboard fallback
-    let kb_x = if keys.pressed(KeyCode::ArrowLeft) || keys.pressed(KeyCode::KeyA) {
-        -1.0
-    } else if keys.pressed(KeyCode::ArrowRight) || keys.pressed(KeyCode::KeyD) {
-        1.0
-    } else {
-        0.0
-    };
-    let kb_y = if keys.pressed(KeyCode::ArrowUp) || keys.pressed(KeyCode::KeyW) {
-        1.0
-    } else if keys.pressed(KeyCode::ArrowDown) || keys.pressed(KeyCode::KeyS) {
-        -1.0
-    } else {
-        0.0
-    };
-    let kb_walk = keys.pressed(KeyCode::ShiftLeft);
-    let kb_jump_pressed = keys.just_pressed(KeyCode::Space);
-    let kb_jump_released = keys.just_released(KeyCode::Space);
-    let kb_dash = keys.just_pressed(KeyCode::KeyE);
-
-    // Merge inputs
+    // Consume buffered input
     let input = MergedInput {
-        move_x: if stick_x.abs() > 0.1 { stick_x } else { kb_x },
-        move_y: if stick_y.abs() > 0.1 { stick_y } else { kb_y },
-        sprint: !(gp_walk || kb_walk),
-        jump_pressed: gp_jump_pressed || kb_jump_pressed,
-        jump_released: gp_jump_released || kb_jump_released,
-        dash_pressed: gp_dash || kb_dash,
+        move_x: buf.move_x,
+        move_y: buf.move_y,
+        sprint: buf.sprint,
+        jump_pressed: buf.jump_pressed,
+        jump_released: buf.jump_released,
+        dash_pressed: buf.dash_pressed,
     };
 
-    // Record input for replay
+    // Clear one-shot flags after consuming
+    buf.jump_pressed = false;
+    buf.jump_released = false;
+    buf.dash_pressed = false;
+
+    // Record input for replay (one sample per fixed tick = deterministic)
     recorder.frames.push(FrameInput {
         move_x: input.move_x,
         move_y: input.move_y,
