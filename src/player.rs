@@ -163,7 +163,7 @@ fn player_movement(
         gamepad.is_some_and(|g| g.get(GamepadButton::RightTrigger2).unwrap_or(0.0) > 0.5);
     let gp_jump_pressed = gamepad.is_some_and(|g| g.just_pressed(GamepadButton::South));
     let gp_jump_released = gamepad.is_some_and(|g| g.just_released(GamepadButton::South));
-    let gp_dash = gamepad.is_some_and(|g| g.just_pressed(GamepadButton::LeftTrigger));
+    let gp_dash = gamepad.is_some_and(|g| g.just_pressed(GamepadButton::LeftTrigger2));
 
     // Keyboard fallback
     let kb_x = if keys.pressed(KeyCode::ArrowLeft) || keys.pressed(KeyCode::KeyA) {
