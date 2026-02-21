@@ -205,11 +205,6 @@ fn generate_wall_corridor(
         }
     }
 
-    // Place a small landing at the top
-    let exit_x = corridor_x + corridor_w / 2;
-    place_platform(grid, corridor_x, y_end - 1, corridor_w);
-
-    exit_x
 }
 
 fn generate_scattered_platforms(
