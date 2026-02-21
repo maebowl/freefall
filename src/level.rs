@@ -159,7 +159,7 @@ fn generate_platform_staircase(
     for i in 0..step_count {
         let y = y_start + i * step_h;
         let plat_w = rng.random_range(diff.min_plat_width..=5);
-        let max_shift = diff.max_h_gap.min(playable_right - plat_w - playable_left);
+        let max_shift = diff.max_h_gap.min(playable_right - plat_w - playable_left).max(0);
         let shift = rng.random_range(-max_shift..=max_shift);
         cur_x = (cur_x + shift).clamp(playable_left, playable_right - plat_w + 1);
         place_platform(grid, cur_x, y, plat_w);
@@ -227,7 +227,8 @@ fn generate_scattered_platforms(
 
     for i in 0..rows {
         let y = y_start + i * step_h;
-        let plat_w = rng.random_range(diff.min_plat_width..=4);
+        let max_w = diff.min_plat_width.max(4);
+        let plat_w = rng.random_range(diff.min_plat_width.min(4)..=max_w);
 
         // Place guaranteed path platform
         let shift = rng.random_range(-3..=3i32);
@@ -237,8 +238,8 @@ fn generate_scattered_platforms(
         // Place 1-3 extra scattered platforms
         let extras = rng.random_range(1..=3);
         for _ in 0..extras {
-            let ex = rng.random_range(playable_left..=playable_right - diff.min_plat_width + 1);
-            let ew = rng.random_range(diff.min_plat_width..=4);
+            let ex = rng.random_range(playable_left..=playable_right - diff.min_plat_width.min(4) + 1);
+            let ew = rng.random_range(diff.min_plat_width.min(4)..=max_w);
             place_platform(grid, ex, y, ew);
         }
     }
@@ -305,9 +306,9 @@ fn generate_dash_gauntlet(
 
     for i in 0..step_count {
         let y = y_start + i * step_h;
-        let plat_w = rng.random_range(2..=diff.min_plat_width);
+        let plat_w = rng.random_range(2..=diff.min_plat_width.max(2));
         // Wider gaps requiring dash
-        let gap = rng.random_range(4..=diff.max_h_gap);
+        let gap = rng.random_range(4..=diff.max_h_gap.max(4));
         let dir = if rng.random_bool(0.5) { 1 } else { -1 };
         cur_x = (cur_x + dir * gap).clamp(playable_left, playable_right - plat_w + 1);
         place_platform(grid, cur_x, y, plat_w);
