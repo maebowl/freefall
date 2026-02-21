@@ -1,6 +1,7 @@
 use bevy::prelude::*;
 
 use crate::level::GamePhase;
+use crate::net::{FetchReplayEvent, NetStatus, OnlineLeaderboard, ReplayFetchStatus};
 use crate::replay::{FrameInput, ReplayData};
 
 // --- Resources ---
@@ -267,8 +268,10 @@ fn toggle_leaderboard(
     mut visible: ResMut<LeaderboardVisible>,
     mut commands: Commands,
     existing: Query<Entity, With<LeaderboardUi>>,
-    leaderboard: Res<Leaderboard>,
+    local_leaderboard: Res<Leaderboard>,
+    online_leaderboard: Res<OnlineLeaderboard>,
     mut selection: ResMut<LeaderboardSelection>,
+    replay_status: Res<ReplayFetchStatus>,
 ) {
     let gp_toggle = gamepads
         .iter()
@@ -278,7 +281,7 @@ fn toggle_leaderboard(
         visible.0 = !visible.0;
         if visible.0 {
             selection.0 = 0;
-            spawn_leaderboard(&mut commands, &leaderboard, selection.0);
+            spawn_leaderboard(&mut commands, &local_leaderboard, &online_leaderboard, selection.0, &replay_status);
         } else {
             for entity in &existing {
                 commands.entity(entity).despawn();
@@ -291,27 +294,36 @@ fn navigate_leaderboard(
     keys: Res<ButtonInput<KeyCode>>,
     gamepads: Query<&Gamepad>,
     visible: Res<LeaderboardVisible>,
-    leaderboard: Res<Leaderboard>,
+    local_leaderboard: Res<Leaderboard>,
+    online_leaderboard: Res<OnlineLeaderboard>,
     mut selection: ResMut<LeaderboardSelection>,
     mut commands: Commands,
     existing: Query<Entity, With<LeaderboardUi>>,
     mut next_state: ResMut<NextState<GamePhase>>,
     mut replay_data: ResMut<ReplayData>,
+    mut fetch_replay_events: EventWriter<FetchReplayEvent>,
+    replay_status: Res<ReplayFetchStatus>,
 ) {
-    if !visible.0 || leaderboard.entries.is_empty() {
+    if !visible.0 {
+        return;
+    }
+
+    let use_online = !online_leaderboard.entries.is_empty();
+    let entry_count = if use_online {
+        online_leaderboard.entries.len()
+    } else {
+        local_leaderboard.entries.len()
+    };
+
+    if entry_count == 0 {
         return;
     }
 
     let gamepad = gamepads.iter().next();
-    let max_idx = leaderboard.entries.len().saturating_sub(1);
+    let max_idx = entry_count.saturating_sub(1);
 
-    // D-pad / stick / keyboard navigation
-    let gp_up = gamepad.is_some_and(|g| {
-        g.just_pressed(GamepadButton::DPadUp)
-    });
-    let gp_down = gamepad.is_some_and(|g| {
-        g.just_pressed(GamepadButton::DPadDown)
-    });
+    let gp_up = gamepad.is_some_and(|g| g.just_pressed(GamepadButton::DPadUp));
+    let gp_down = gamepad.is_some_and(|g| g.just_pressed(GamepadButton::DPadDown));
 
     let up = keys.just_pressed(KeyCode::ArrowUp) || keys.just_pressed(KeyCode::KeyW) || gp_up;
     let down = keys.just_pressed(KeyCode::ArrowDown) || keys.just_pressed(KeyCode::KeyS) || gp_down;
@@ -326,23 +338,36 @@ fn navigate_leaderboard(
         changed = true;
     }
 
-    // Rebuild UI when selection changes
     if changed {
         for entity in &existing {
             commands.entity(entity).despawn();
         }
-        spawn_leaderboard(&mut commands, &leaderboard, selection.0);
+        spawn_leaderboard(&mut commands, &local_leaderboard, &online_leaderboard, selection.0, &replay_status);
     }
 
     // Confirm selection — start replay
     let gp_confirm = gamepad.is_some_and(|g| g.just_pressed(GamepadButton::South));
     if keys.just_pressed(KeyCode::Space) || keys.just_pressed(KeyCode::Enter) || gp_confirm {
-        let entry = &leaderboard.entries[selection.0];
-        replay_data.frames = entry.inputs.clone();
-        replay_data.seed = entry.seed;
-        replay_data.level = entry.level;
-        replay_data.frame_index = 0;
-        next_state.set(GamePhase::Replaying);
+        if replay_status.loading {
+            return; // Already fetching a replay
+        }
+        if use_online {
+            // Fetch replay from server
+            fetch_replay_events.write(FetchReplayEvent { index: selection.0 });
+            // Rebuild UI to show loading state
+            for entity in &existing {
+                commands.entity(entity).despawn();
+            }
+            spawn_leaderboard(&mut commands, &local_leaderboard, &online_leaderboard, selection.0, &replay_status);
+        } else {
+            // Use local replay data directly
+            let entry = &local_leaderboard.entries[selection.0];
+            replay_data.frames = entry.inputs.clone();
+            replay_data.seed = entry.seed;
+            replay_data.level = entry.level;
+            replay_data.frame_index = 0;
+            next_state.set(GamePhase::Replaying);
+        }
     }
 
     // Close with B or Escape
@@ -354,7 +379,15 @@ fn navigate_leaderboard(
     }
 }
 
-fn spawn_leaderboard(commands: &mut Commands, leaderboard: &Leaderboard, selected: usize) {
+fn spawn_leaderboard(
+    commands: &mut Commands,
+    local_leaderboard: &Leaderboard,
+    online_leaderboard: &OnlineLeaderboard,
+    selected: usize,
+    replay_status: &ReplayFetchStatus,
+) {
+    let use_online = !online_leaderboard.entries.is_empty();
+
     commands
         .spawn((
             LeaderboardUi,
@@ -379,8 +412,14 @@ fn spawn_leaderboard(commands: &mut Commands, leaderboard: &Leaderboard, selecte
                     BackgroundColor(Color::srgba(0.05, 0.05, 0.1, 0.9)),
                 ))
                 .with_children(|panel| {
+                    // Header with status indicator
+                    let header = match &online_leaderboard.status {
+                        NetStatus::Fetching => "LEADERBOARD  [Fetching...]",
+                        NetStatus::Error(_) => "LEADERBOARD  [Offline]",
+                        _ => "LEADERBOARD",
+                    };
                     panel.spawn((
-                        Text::new("LEADERBOARD"),
+                        Text::new(header),
                         TextFont {
                             font_size: 32.0,
                             ..default()
@@ -388,24 +427,47 @@ fn spawn_leaderboard(commands: &mut Commands, leaderboard: &Leaderboard, selecte
                         TextColor(Color::srgb(0.4, 0.7, 1.0)),
                     ));
 
-                    if leaderboard.entries.is_empty() {
-                        panel.spawn((
-                            Text::new("No times recorded yet"),
-                            TextFont {
-                                font_size: 20.0,
-                                ..default()
-                            },
-                            TextColor(Color::srgb(0.6, 0.6, 0.6)),
-                        ));
-                    } else {
-                        for (i, entry) in leaderboard.entries.iter().enumerate() {
+                    if use_online {
+                        // Show online entries with names
+                        for (i, entry) in online_leaderboard.entries.iter().enumerate() {
                             let minutes = (entry.time / 60.0) as u32;
                             let seconds = entry.time % 60.0;
                             let is_selected = i == selected;
                             let color = if is_selected {
-                                Color::srgb(1.0, 1.0, 0.3) // yellow highlight
+                                Color::srgb(1.0, 1.0, 0.3)
                             } else if i == 0 {
-                                Color::srgb(0.2, 0.9, 0.3) // green for best
+                                Color::srgb(0.2, 0.9, 0.3)
+                            } else {
+                                Color::srgb(0.8, 0.8, 0.8)
+                            };
+                            let prefix = if is_selected { "> " } else { "  " };
+                            panel.spawn((
+                                LeaderboardRow(i),
+                                Text::new(format!(
+                                    "{}#{}  {:02}:{:06.3}  {}",
+                                    prefix,
+                                    i + 1,
+                                    minutes,
+                                    seconds,
+                                    entry.name,
+                                )),
+                                TextFont {
+                                    font_size: 20.0,
+                                    ..default()
+                                },
+                                TextColor(color),
+                            ));
+                        }
+                    } else if !local_leaderboard.entries.is_empty() {
+                        // Fallback to local entries (no names)
+                        for (i, entry) in local_leaderboard.entries.iter().enumerate() {
+                            let minutes = (entry.time / 60.0) as u32;
+                            let seconds = entry.time % 60.0;
+                            let is_selected = i == selected;
+                            let color = if is_selected {
+                                Color::srgb(1.0, 1.0, 0.3)
+                            } else if i == 0 {
+                                Color::srgb(0.2, 0.9, 0.3)
                             } else {
                                 Color::srgb(0.8, 0.8, 0.8)
                             };
@@ -417,7 +479,7 @@ fn spawn_leaderboard(commands: &mut Commands, leaderboard: &Leaderboard, selecte
                                     prefix,
                                     i + 1,
                                     minutes,
-                                    seconds
+                                    seconds,
                                 )),
                                 TextFont {
                                     font_size: 20.0,
@@ -426,6 +488,31 @@ fn spawn_leaderboard(commands: &mut Commands, leaderboard: &Leaderboard, selecte
                                 TextColor(color),
                             ));
                         }
+                    } else {
+                        panel.spawn((
+                            Text::new("No times recorded yet"),
+                            TextFont {
+                                font_size: 20.0,
+                                ..default()
+                            },
+                            TextColor(Color::srgb(0.6, 0.6, 0.6)),
+                        ));
+                    }
+
+                    // Loading indicator for replay fetch
+                    if replay_status.loading {
+                        panel.spawn((
+                            Text::new("Loading replay..."),
+                            TextFont {
+                                font_size: 18.0,
+                                ..default()
+                            },
+                            TextColor(Color::srgb(1.0, 0.8, 0.3)),
+                            Node {
+                                margin: UiRect::top(Val::Px(8.0)),
+                                ..default()
+                            },
+                        ));
                     }
 
                     panel.spawn((

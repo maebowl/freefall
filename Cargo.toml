@@ -7,6 +7,9 @@ edition = "2021"
 bevy = { version = "0.18", features = ["bevy_debug_stepping"] }
 avian2d = "0.5"
 rand = "0.9"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+ureq = { version = "3", features = ["json"] }
 
 # Optimize dependencies in dev builds for playable performance
 [profile.dev.package."*"]

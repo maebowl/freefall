@@ -1,8 +1,10 @@
 mod camera;
 mod level;
+mod net;
 mod player;
 mod replay;
 mod ui;
+mod username;
 mod walls;
 
 use avian2d::prelude::*;
@@ -30,11 +32,16 @@ fn main() {
             camera::CameraPlugin,
             ui::UiPlugin,
             replay::ReplayPlugin,
+            net::NetPlugin,
+            username::UsernamePlugin,
         ))
         .add_systems(Startup, setup)
         .add_systems(
             Update,
-            close_on_escape.run_if(not(in_state(level::GamePhase::Replaying))),
+            close_on_escape.run_if(
+                not(in_state(level::GamePhase::Replaying))
+                    .and(not(in_state(level::GamePhase::NameEntry))),
+            ),
         )
         .run();
 }

@@ -1,0 +1,7 @@
+name = "freefall-leaderboard"
+main = "src/index.js"
+compatibility_date = "2024-12-01"
+
+[[kv_namespaces]]
+binding = "LEADERBOARD"
+id = "3004a92b6c674e72aa3daf395cee083e"

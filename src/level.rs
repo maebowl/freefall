@@ -5,6 +5,7 @@ use bevy::prelude::*;
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
 
+use crate::net::SubmitScoreEvent;
 use crate::player::{spawn_player, Player};
 use crate::replay::{ReplayData, ReplayRecorder};
 use crate::ui::{Leaderboard, SpeedrunTimer};
@@ -20,6 +21,7 @@ const SECTION_COUNT: i32 = 8;
 #[derive(Debug, Clone, Copy, Default, Eq, PartialEq, Hash, States)]
 pub enum GamePhase {
     #[default]
+    NameEntry,
     TitleScreen,
     Generating,
     Playing,
@@ -611,6 +613,7 @@ fn checkpoint_collision(
     mut timer: ResMut<SpeedrunTimer>,
     mut leaderboard: ResMut<Leaderboard>,
     recorder: Res<ReplayRecorder>,
+    mut submit_events: EventWriter<SubmitScoreEvent>,
 ) {
     let Ok(player) = player_query.single() else {
         return;
@@ -628,6 +631,13 @@ fn checkpoint_collision(
                     recorder.level,
                     recorder.frames.clone(),
                 );
+                // Submit score to online leaderboard
+                submit_events.write(SubmitScoreEvent {
+                    time: timer.elapsed,
+                    seed: recorder.seed,
+                    level: recorder.level,
+                    inputs: recorder.frames.clone(),
+                });
             }
             next_state.set(GamePhase::Transitioning);
             return;

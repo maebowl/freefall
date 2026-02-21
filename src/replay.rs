@@ -1,12 +1,13 @@
 use avian2d::prelude::*;
 use bevy::prelude::*;
+use serde::{Deserialize, Serialize};
 
 use crate::level::{build_level, GamePhase, LevelEntity, SpawnPoint};
 use crate::player::{apply_movement, detect_ground_and_walls, GhostPlayer, MergedInput, Player, PlayerState};
 
 const OFFSCREEN: f32 = -99999.0;
 
-#[derive(Clone, Default)]
+#[derive(Clone, Default, Serialize, Deserialize)]
 pub struct FrameInput {
     pub move_x: f32,
     pub move_y: f32,
