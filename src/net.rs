@@ -78,6 +78,9 @@ pub struct ReplayFetchStatus {
     pub loading: bool,
 }
 
+#[derive(Resource)]
+struct RefreshTimer(Timer);
+
 #[derive(Deserialize)]
 struct ReplayPayload {
     #[serde(deserialize_with = "deserialize_seed")]
@@ -101,6 +104,7 @@ impl Plugin for NetPlugin {
             .init_resource::<ReplayFetchStatus>()
             .init_resource::<PendingSubmission>()
             .init_resource::<PendingReplayFetch>()
+            .insert_resource(RefreshTimer(Timer::from_seconds(30.0, TimerMode::Repeating)))
             .add_systems(OnEnter(GamePhase::TitleScreen), trigger_fetch_leaderboard)
             .add_systems(
                 Update,
@@ -110,6 +114,7 @@ impl Plugin for NetPlugin {
                     poll_submit_response,
                     handle_fetch_replay,
                     poll_replay_response,
+                    periodic_refresh,
                 ),
             );
     }
@@ -129,6 +134,24 @@ fn trigger_fetch_leaderboard(
         let result = fetch_leaderboard_http();
         let _ = tx.send(result);
     });
+}
+
+fn periodic_refresh(
+    mut commands: Commands,
+    mut leaderboard: ResMut<OnlineLeaderboard>,
+    mut timer: ResMut<RefreshTimer>,
+    time: Res<Time>,
+) {
+    timer.0.tick(time.delta());
+    if timer.0.just_finished() && leaderboard.status != NetStatus::Fetching {
+        leaderboard.status = NetStatus::Fetching;
+        let (tx, rx) = mpsc::channel();
+        commands.insert_resource(LeaderboardReceiver(Mutex::new(rx)));
+        std::thread::spawn(move || {
+            let result = fetch_leaderboard_http();
+            let _ = tx.send(result);
+        });
+    }
 }
 
 fn fetch_leaderboard_http() -> Result<Vec<OnlineEntry>, String> {
