@@ -47,6 +47,10 @@ impl Plugin for LevelPlugin {
             .add_systems(
                 Update,
                 checkpoint_collision.run_if(in_state(GamePhase::Playing)),
+            )
+            .add_systems(
+                Update,
+                regenerate_level.run_if(in_state(GamePhase::Playing)),
             );
     }
 }
@@ -552,6 +556,18 @@ fn cleanup_level(
 
     level_counter.0 += 1;
     next_state.set(GamePhase::Generating);
+}
+
+fn regenerate_level(
+    keys: Res<ButtonInput<KeyCode>>,
+    mut next_state: ResMut<NextState<GamePhase>>,
+    mut level_counter: ResMut<LevelCounter>,
+) {
+    if keys.just_pressed(KeyCode::KeyR) {
+        // Keep same level number — just regenerate
+        level_counter.0 = level_counter.0.saturating_sub(1);
+        next_state.set(GamePhase::Transitioning);
+    }
 }
 
 fn checkpoint_collision(
