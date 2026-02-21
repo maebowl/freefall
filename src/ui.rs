@@ -27,7 +27,6 @@ impl Default for SpeedrunTimer {
 pub struct LeaderboardEntry {
     pub time: f32,
     pub seed: u64,
-    pub level: u32,
     pub inputs: Vec<FrameInput>,
 }
 
@@ -37,11 +36,10 @@ pub struct Leaderboard {
 }
 
 impl Leaderboard {
-    pub fn add_entry(&mut self, time: f32, seed: u64, level: u32, inputs: Vec<FrameInput>) {
+    pub fn add_entry(&mut self, time: f32, seed: u64, inputs: Vec<FrameInput>) {
         self.entries.push(LeaderboardEntry {
             time,
             seed,
-            level,
             inputs,
         });
         self.entries.sort_by(|a, b| a.time.partial_cmp(&b.time).unwrap());
@@ -364,7 +362,6 @@ fn navigate_leaderboard(
             let entry = &local_leaderboard.entries[selection.0];
             replay_data.frames = entry.inputs.clone();
             replay_data.seed = entry.seed;
-            replay_data.level = entry.level;
             replay_data.frame_index = 0;
             next_state.set(GamePhase::Replaying);
         }

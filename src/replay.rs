@@ -21,14 +21,12 @@ pub struct FrameInput {
 pub struct ReplayRecorder {
     pub frames: Vec<FrameInput>,
     pub seed: u64,
-    pub level: u32,
 }
 
 #[derive(Resource, Default)]
 pub struct ReplayData {
     pub frames: Vec<FrameInput>,
     pub seed: u64,
-    pub level: u32,
     pub frame_index: usize,
 }
 
@@ -77,7 +75,7 @@ fn setup_replay(
     }
 
     // Regenerate level from saved seed
-    let sp = build_level(&mut commands, replay_data.seed, replay_data.level);
+    let sp = build_level(&mut commands, replay_data.seed);
     spawn_point.0 = sp;
 
     // Hide real player and move offscreen during replay

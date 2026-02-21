@@ -34,7 +34,6 @@ pub struct OnlineEntry {
     pub name: String,
     #[serde(deserialize_with = "deserialize_seed", serialize_with = "serialize_seed")]
     pub seed: u64,
-    pub level: u32,
     pub id: String,
 }
 
@@ -55,7 +54,6 @@ pub struct PendingSubmission(pub Option<SubmissionData>);
 pub struct SubmissionData {
     pub time: f32,
     pub seed: u64,
-    pub level: u32,
     pub inputs: Vec<FrameInput>,
 }
 
@@ -85,7 +83,6 @@ struct RefreshTimer(Timer);
 struct ReplayPayload {
     #[serde(deserialize_with = "deserialize_seed")]
     seed: u64,
-    level: u32,
     inputs: Vec<FrameInput>,
 }
 
@@ -206,7 +203,7 @@ fn handle_submit_score(
     commands.insert_resource(SubmitReceiver(Mutex::new(rx)));
 
     std::thread::spawn(move || {
-        let result = submit_score_http(data.time, &name, data.seed, data.level, &data.inputs);
+        let result = submit_score_http(data.time, &name, data.seed, &data.inputs);
         let _ = tx.send(result);
     });
 }
@@ -215,7 +212,6 @@ fn submit_score_http(
     time: f32,
     name: &str,
     seed: u64,
-    level: u32,
     inputs: &[FrameInput],
 ) -> Result<(), String> {
     let url = format!("{API_URL}/leaderboard");
@@ -223,7 +219,6 @@ fn submit_score_http(
         "time": time,
         "name": name,
         "seed": seed.to_string(),
-        "level": level,
         "inputs": inputs,
     });
     let resp: SubmitResponse = ureq::post(&url)
@@ -308,7 +303,6 @@ fn poll_replay_response(
         Ok(Ok(payload)) => {
             replay_data.frames = payload.inputs;
             replay_data.seed = payload.seed;
-            replay_data.level = payload.level;
             replay_data.frame_index = 0;
             status.loading = false;
             next_state.set(GamePhase::Replaying);

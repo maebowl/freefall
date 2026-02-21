@@ -64,7 +64,7 @@ async function getReplay(env, corsHeaders, index) {
 
   const inputs = JSON.parse(replayRaw);
   return json(
-    { seed: entry.seed, level: entry.level, inputs },
+    { seed: entry.seed, inputs },
     200,
     corsHeaders,
   );
@@ -72,14 +72,13 @@ async function getReplay(env, corsHeaders, index) {
 
 async function submitScore(env, corsHeaders, request) {
   const body = await request.json();
-  const { time, name, seed, level, inputs } = body;
+  const { time, name, seed, inputs } = body;
 
   if (
     typeof time !== "number" ||
     typeof name !== "string" ||
     !name.trim() ||
     typeof seed !== "string" ||
-    typeof level !== "number" ||
     !Array.isArray(inputs)
   ) {
     return json({ error: "Invalid body" }, 400, corsHeaders);
@@ -95,7 +94,7 @@ async function submitScore(env, corsHeaders, request) {
     return json({ ok: false }, 200, corsHeaders);
   }
 
-  const newEntry = { time, name: name.trim().slice(0, 16), seed, level, id };
+  const newEntry = { time, name: name.trim().slice(0, 16), seed, id };
   entries.push(newEntry);
   entries.sort((a, b) => a.time - b.time);
 

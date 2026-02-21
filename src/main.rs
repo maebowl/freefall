@@ -1,6 +1,7 @@
 mod camera;
 mod level;
 mod net;
+mod pieces;
 mod player;
 mod replay;
 mod ui;
