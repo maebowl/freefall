@@ -1,6 +1,6 @@
 use bevy::prelude::*;
 
-use crate::player::Player;
+use crate::player::{GhostPlayer, Player};
 
 pub struct CameraPlugin;
 
@@ -11,18 +11,25 @@ impl Plugin for CameraPlugin {
 }
 
 fn camera_follow(
-    player_query: Query<&Transform, With<Player>>,
-    mut camera_query: Query<&mut Transform, (With<Camera2d>, Without<Player>)>,
+    player_query: Query<&Transform, (With<Player>, Without<GhostPlayer>, Without<Camera2d>)>,
+    ghost_query: Query<&Transform, (With<GhostPlayer>, Without<Player>, Without<Camera2d>)>,
+    mut camera_query: Query<&mut Transform, (With<Camera2d>, Without<Player>, Without<GhostPlayer>)>,
     time: Res<Time>,
 ) {
-    let Ok(player_tf) = player_query.single() else {
+    // Follow ghost if one exists, otherwise follow player
+    let target_tf = if let Ok(ghost_tf) = ghost_query.single() {
+        ghost_tf
+    } else if let Ok(player_tf) = player_query.single() {
+        player_tf
+    } else {
         return;
     };
+
     let Ok(mut camera_tf) = camera_query.single_mut() else {
         return;
     };
 
-    let target = player_tf.translation.truncate();
+    let target = target_tf.translation.truncate();
     let current = camera_tf.translation.truncate();
 
     // Exponential smoothing for frame-rate independent lerp

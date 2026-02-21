@@ -2,9 +2,11 @@ use std::collections::HashMap;
 
 use avian2d::prelude::*;
 use bevy::prelude::*;
-use rand::Rng;
+use rand::rngs::StdRng;
+use rand::{Rng, SeedableRng};
 
 use crate::player::{spawn_player, Player};
+use crate::replay::{ReplayData, ReplayRecorder};
 use crate::ui::{Leaderboard, SpeedrunTimer};
 use crate::walls::Wall;
 
@@ -22,10 +24,14 @@ pub enum GamePhase {
     Generating,
     Playing,
     Transitioning,
+    Replaying,
 }
 
 #[derive(Resource)]
 pub struct LevelCounter(pub u32);
+
+#[derive(Resource)]
+pub struct LevelSeed(pub u64);
 
 #[derive(Resource)]
 pub struct SpawnPoint(pub Vec2);
@@ -42,6 +48,7 @@ impl Plugin for LevelPlugin {
     fn build(&self, app: &mut App) {
         app.init_state::<GamePhase>()
             .insert_resource(LevelCounter(1))
+            .insert_resource(LevelSeed(0))
             .insert_resource(SpawnPoint(Vec2::ZERO))
             .add_systems(OnEnter(GamePhase::Generating), generate_level)
             .add_systems(OnEnter(GamePhase::Playing), reposition_player)
@@ -399,16 +406,14 @@ fn merge_grid_to_rects(grid: &[Vec<bool>]) -> Vec<WallRect> {
 
 // --- Level generation ---
 
-fn generate_level(
-    mut commands: Commands,
-    level_counter: Res<LevelCounter>,
-    mut spawn_point: ResMut<SpawnPoint>,
-    mut next_state: ResMut<NextState<GamePhase>>,
-    player_query: Query<Entity, With<Player>>,
-) {
-    let mut rng = rand::rng();
-    let diff = difficulty(level_counter.0);
-    let level = level_counter.0;
+/// Generates the level grid and spawns entities. Used for both normal play and replay.
+pub fn build_level(
+    commands: &mut Commands,
+    seed: u64,
+    level: u32,
+) -> Vec2 {
+    let mut rng = StdRng::seed_from_u64(seed);
+    let diff = difficulty(level);
 
     // Determine grid height: 80 + some randomness
     let grid_h = rng.random_range(80..=100) as i32;
@@ -519,17 +524,44 @@ fn generate_level(
         ));
     });
 
-    // Set spawn point on the landing platform (center of the level)
+    // Return spawn point
     let sp_x = (grid_w as f32 / 2.0) * TILE;
     let sp_y = (playable_bottom as f32 + 1.5) * TILE;
-    spawn_point.0 = Vec2::new(sp_x, sp_y);
+
+    info!("Generated level {} ({}x{} grid, seed {})", level, grid_w, grid_h, seed);
+
+    Vec2::new(sp_x, sp_y)
+}
+
+fn generate_level(
+    mut commands: Commands,
+    level_counter: Res<LevelCounter>,
+    mut spawn_point: ResMut<SpawnPoint>,
+    mut next_state: ResMut<NextState<GamePhase>>,
+    player_query: Query<Entity, With<Player>>,
+    mut level_seed: ResMut<LevelSeed>,
+    mut recorder: ResMut<ReplayRecorder>,
+) {
+    // Generate a new random seed
+    let seed = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos() as u64;
+    level_seed.0 = seed;
+
+    let sp = build_level(&mut commands, seed, level_counter.0);
+    spawn_point.0 = sp;
+
+    // Reset recorder for this run
+    recorder.frames.clear();
+    recorder.seed = seed;
+    recorder.level = level_counter.0;
 
     // Spawn player on first level
     if player_query.is_empty() {
         spawn_player(&mut commands, spawn_point.0);
     }
 
-    info!("Generated level {} ({}x{} grid)", level, grid_w, grid_h);
     next_state.set(GamePhase::Playing);
 }
 
@@ -578,6 +610,7 @@ fn checkpoint_collision(
     mut next_state: ResMut<NextState<GamePhase>>,
     mut timer: ResMut<SpeedrunTimer>,
     mut leaderboard: ResMut<Leaderboard>,
+    recorder: Res<ReplayRecorder>,
 ) {
     let Ok(player) = player_query.single() else {
         return;
@@ -589,9 +622,12 @@ fn checkpoint_collision(
             if timer.final_time.is_none() {
                 timer.running = false;
                 timer.final_time = Some(timer.elapsed);
-                leaderboard.times.push(timer.elapsed);
-                leaderboard.times.sort_by(|a, b| a.partial_cmp(b).unwrap());
-                leaderboard.times.truncate(5);
+                leaderboard.add_entry(
+                    timer.elapsed,
+                    recorder.seed,
+                    recorder.level,
+                    recorder.frames.clone(),
+                );
             }
             next_state.set(GamePhase::Transitioning);
             return;

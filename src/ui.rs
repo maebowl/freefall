@@ -1,6 +1,7 @@
 use bevy::prelude::*;
 
 use crate::level::GamePhase;
+use crate::replay::{FrameInput, ReplayData};
 
 // --- Resources ---
 
@@ -21,13 +22,37 @@ impl Default for SpeedrunTimer {
     }
 }
 
+#[derive(Clone)]
+pub struct LeaderboardEntry {
+    pub time: f32,
+    pub seed: u64,
+    pub level: u32,
+    pub inputs: Vec<FrameInput>,
+}
+
 #[derive(Resource, Default)]
 pub struct Leaderboard {
-    pub times: Vec<f32>,
+    pub entries: Vec<LeaderboardEntry>,
+}
+
+impl Leaderboard {
+    pub fn add_entry(&mut self, time: f32, seed: u64, level: u32, inputs: Vec<FrameInput>) {
+        self.entries.push(LeaderboardEntry {
+            time,
+            seed,
+            level,
+            inputs,
+        });
+        self.entries.sort_by(|a, b| a.time.partial_cmp(&b.time).unwrap());
+        self.entries.truncate(5);
+    }
 }
 
 #[derive(Resource, Default)]
 struct LeaderboardVisible(bool);
+
+#[derive(Resource, Default)]
+struct LeaderboardSelection(usize);
 
 // --- Components ---
 
@@ -43,6 +68,9 @@ struct TimerText;
 #[derive(Component)]
 struct LeaderboardUi;
 
+#[derive(Component)]
+struct LeaderboardRow(usize);
+
 // --- Plugin ---
 
 pub struct UiPlugin;
@@ -52,6 +80,7 @@ impl Plugin for UiPlugin {
         app.init_resource::<SpeedrunTimer>()
             .init_resource::<Leaderboard>()
             .init_resource::<LeaderboardVisible>()
+            .init_resource::<LeaderboardSelection>()
             // Title screen
             .add_systems(OnEnter(GamePhase::TitleScreen), spawn_title_screen)
             .add_systems(OnExit(GamePhase::TitleScreen), despawn_marked::<TitleScreenUi>)
@@ -64,7 +93,7 @@ impl Plugin for UiPlugin {
             .add_systems(OnExit(GamePhase::Playing), (despawn_marked::<HudUi>, despawn_marked::<LeaderboardUi>, clear_leaderboard_visible))
             .add_systems(
                 Update,
-                (tick_timer, update_timer_display, toggle_leaderboard)
+                (tick_timer, update_timer_display, toggle_leaderboard, navigate_leaderboard)
                     .run_if(in_state(GamePhase::Playing)),
             );
     }
@@ -239,6 +268,7 @@ fn toggle_leaderboard(
     mut commands: Commands,
     existing: Query<Entity, With<LeaderboardUi>>,
     leaderboard: Res<Leaderboard>,
+    mut selection: ResMut<LeaderboardSelection>,
 ) {
     let gp_toggle = gamepads
         .iter()
@@ -247,7 +277,8 @@ fn toggle_leaderboard(
     if keys.just_pressed(KeyCode::KeyL) || gp_toggle {
         visible.0 = !visible.0;
         if visible.0 {
-            spawn_leaderboard(&mut commands, &leaderboard);
+            selection.0 = 0;
+            spawn_leaderboard(&mut commands, &leaderboard, selection.0);
         } else {
             for entity in &existing {
                 commands.entity(entity).despawn();
@@ -256,7 +287,74 @@ fn toggle_leaderboard(
     }
 }
 
-fn spawn_leaderboard(commands: &mut Commands, leaderboard: &Leaderboard) {
+fn navigate_leaderboard(
+    keys: Res<ButtonInput<KeyCode>>,
+    gamepads: Query<&Gamepad>,
+    visible: Res<LeaderboardVisible>,
+    leaderboard: Res<Leaderboard>,
+    mut selection: ResMut<LeaderboardSelection>,
+    mut commands: Commands,
+    existing: Query<Entity, With<LeaderboardUi>>,
+    mut next_state: ResMut<NextState<GamePhase>>,
+    mut replay_data: ResMut<ReplayData>,
+) {
+    if !visible.0 || leaderboard.entries.is_empty() {
+        return;
+    }
+
+    let gamepad = gamepads.iter().next();
+    let max_idx = leaderboard.entries.len().saturating_sub(1);
+
+    // D-pad / stick / keyboard navigation
+    let gp_up = gamepad.is_some_and(|g| {
+        g.just_pressed(GamepadButton::DPadUp)
+    });
+    let gp_down = gamepad.is_some_and(|g| {
+        g.just_pressed(GamepadButton::DPadDown)
+    });
+
+    let up = keys.just_pressed(KeyCode::ArrowUp) || keys.just_pressed(KeyCode::KeyW) || gp_up;
+    let down = keys.just_pressed(KeyCode::ArrowDown) || keys.just_pressed(KeyCode::KeyS) || gp_down;
+
+    let mut changed = false;
+    if up && selection.0 > 0 {
+        selection.0 -= 1;
+        changed = true;
+    }
+    if down && selection.0 < max_idx {
+        selection.0 += 1;
+        changed = true;
+    }
+
+    // Rebuild UI when selection changes
+    if changed {
+        for entity in &existing {
+            commands.entity(entity).despawn();
+        }
+        spawn_leaderboard(&mut commands, &leaderboard, selection.0);
+    }
+
+    // Confirm selection — start replay
+    let gp_confirm = gamepad.is_some_and(|g| g.just_pressed(GamepadButton::South));
+    if keys.just_pressed(KeyCode::Space) || keys.just_pressed(KeyCode::Enter) || gp_confirm {
+        let entry = &leaderboard.entries[selection.0];
+        replay_data.frames = entry.inputs.clone();
+        replay_data.seed = entry.seed;
+        replay_data.level = entry.level;
+        replay_data.frame_index = 0;
+        next_state.set(GamePhase::Replaying);
+    }
+
+    // Close with B or Escape
+    let gp_close = gamepad.is_some_and(|g| g.just_pressed(GamepadButton::East));
+    if keys.just_pressed(KeyCode::Escape) || gp_close {
+        for entity in &existing {
+            commands.entity(entity).despawn();
+        }
+    }
+}
+
+fn spawn_leaderboard(commands: &mut Commands, leaderboard: &Leaderboard, selected: usize) {
     commands
         .spawn((
             LeaderboardUi,
@@ -290,7 +388,7 @@ fn spawn_leaderboard(commands: &mut Commands, leaderboard: &Leaderboard) {
                         TextColor(Color::srgb(0.4, 0.7, 1.0)),
                     ));
 
-                    if leaderboard.times.is_empty() {
+                    if leaderboard.entries.is_empty() {
                         panel.spawn((
                             Text::new("No times recorded yet"),
                             TextFont {
@@ -300,17 +398,23 @@ fn spawn_leaderboard(commands: &mut Commands, leaderboard: &Leaderboard) {
                             TextColor(Color::srgb(0.6, 0.6, 0.6)),
                         ));
                     } else {
-                        for (i, time) in leaderboard.times.iter().enumerate() {
-                            let minutes = (*time / 60.0) as u32;
-                            let seconds = *time % 60.0;
-                            let color = if i == 0 {
-                                Color::srgb(0.2, 0.9, 0.3)
+                        for (i, entry) in leaderboard.entries.iter().enumerate() {
+                            let minutes = (entry.time / 60.0) as u32;
+                            let seconds = entry.time % 60.0;
+                            let is_selected = i == selected;
+                            let color = if is_selected {
+                                Color::srgb(1.0, 1.0, 0.3) // yellow highlight
+                            } else if i == 0 {
+                                Color::srgb(0.2, 0.9, 0.3) // green for best
                             } else {
                                 Color::srgb(0.8, 0.8, 0.8)
                             };
+                            let prefix = if is_selected { "> " } else { "  " };
                             panel.spawn((
+                                LeaderboardRow(i),
                                 Text::new(format!(
-                                    "#{}  {:02}:{:06.3}",
+                                    "{}#{}  {:02}:{:06.3}",
+                                    prefix,
                                     i + 1,
                                     minutes,
                                     seconds
@@ -325,7 +429,7 @@ fn spawn_leaderboard(commands: &mut Commands, leaderboard: &Leaderboard) {
                     }
 
                     panel.spawn((
-                        Text::new("Press L or Menu to close"),
+                        Text::new("Up/Down: Select  |  A/Space: Replay  |  L: Close"),
                         TextFont {
                             font_size: 16.0,
                             ..default()

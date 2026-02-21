@@ -2,6 +2,7 @@ use avian2d::prelude::*;
 use bevy::prelude::*;
 
 use crate::level::GamePhase;
+use crate::replay::{FrameInput, ReplayRecorder};
 
 const WALK_SPEED: f32 = 120.0;
 const SPRINT_MULTIPLIER: f32 = 1.8;
@@ -22,6 +23,9 @@ const WALL_COYOTE_TIME: f32 = 0.08;
 
 #[derive(Default, Component)]
 pub struct Player;
+
+#[derive(Component)]
+pub struct GhostPlayer;
 
 #[derive(Component)]
 pub struct PlayerState {
@@ -52,6 +56,16 @@ impl Default for PlayerState {
             wall_coyote: 0.0,
         }
     }
+}
+
+#[derive(Clone, Default)]
+pub struct MergedInput {
+    pub move_x: f32,
+    pub move_y: f32,
+    pub sprint: bool,
+    pub jump_pressed: bool,
+    pub jump_released: bool,
+    pub dash_pressed: bool,
 }
 
 pub struct PlayerPlugin;
@@ -88,57 +102,67 @@ fn ground_detection(
     time: Res<Time>,
 ) {
     for (entity, transform, mut state) in &mut query {
-        let base = transform.translation.truncate() + Vec2::new(0.0, -7.0);
-        let filter = SpatialQueryFilter::default().with_excluded_entities([entity]);
+        detect_ground_and_walls(entity, transform, &mut state, &spatial_query, &time);
+    }
+}
 
-        // Cast 3 rays: center, left edge, right edge for reliable edge detection
-        let hit = spatial_query
-            .cast_ray(base, Dir2::NEG_Y, 3.0, true, &filter)
+pub fn detect_ground_and_walls(
+    entity: Entity,
+    transform: &Transform,
+    state: &mut PlayerState,
+    spatial_query: &SpatialQuery,
+    time: &Time,
+) {
+    let base = transform.translation.truncate() + Vec2::new(0.0, -7.0);
+    let filter = SpatialQueryFilter::default().with_excluded_entities([entity]);
+
+    // Cast 3 rays: center, left edge, right edge for reliable edge detection
+    let hit = spatial_query
+        .cast_ray(base, Dir2::NEG_Y, 3.0, true, &filter)
+        .is_some()
+        || spatial_query
+            .cast_ray(base + Vec2::new(-6.0, 0.0), Dir2::NEG_Y, 3.0, true, &filter)
             .is_some()
-            || spatial_query
-                .cast_ray(base + Vec2::new(-6.0, 0.0), Dir2::NEG_Y, 3.0, true, &filter)
-                .is_some()
-            || spatial_query
-                .cast_ray(base + Vec2::new(6.0, 0.0), Dir2::NEG_Y, 3.0, true, &filter)
-                .is_some();
-
-        if hit {
-            state.grounded = true;
-            state.has_air_dash = true;
-            state.coyote_timer = COYOTE_TIME;
-        } else {
-            state.coyote_timer -= time.delta_secs();
-            if state.coyote_timer <= 0.0 {
-                state.grounded = false;
-            }
-        }
-
-        // Wall detection — cast rays from left and right sides
-        let center = transform.translation.truncate();
-        let wall_left = spatial_query
-            .cast_ray(center, Dir2::NEG_X, 9.0, true, &filter)
-            .is_some();
-        let wall_right = spatial_query
-            .cast_ray(center, Dir2::X, 9.0, true, &filter)
+        || spatial_query
+            .cast_ray(base + Vec2::new(6.0, 0.0), Dir2::NEG_Y, 3.0, true, &filter)
             .is_some();
 
-        if !state.grounded {
-            if wall_left {
-                state.wall_dir = -1.0;
-                state.wall_coyote = WALL_COYOTE_TIME;
-            } else if wall_right {
-                state.wall_dir = 1.0;
-                state.wall_coyote = WALL_COYOTE_TIME;
-            } else {
-                state.wall_coyote -= time.delta_secs();
-                if state.wall_coyote <= 0.0 {
-                    state.wall_dir = 0.0;
-                }
-            }
-        } else {
-            state.wall_dir = 0.0;
-            state.wall_coyote = 0.0;
+    if hit {
+        state.grounded = true;
+        state.has_air_dash = true;
+        state.coyote_timer = COYOTE_TIME;
+    } else {
+        state.coyote_timer -= time.delta_secs();
+        if state.coyote_timer <= 0.0 {
+            state.grounded = false;
         }
+    }
+
+    // Wall detection — cast rays from left and right sides
+    let center = transform.translation.truncate();
+    let wall_left = spatial_query
+        .cast_ray(center, Dir2::NEG_X, 9.0, true, &filter)
+        .is_some();
+    let wall_right = spatial_query
+        .cast_ray(center, Dir2::X, 9.0, true, &filter)
+        .is_some();
+
+    if !state.grounded {
+        if wall_left {
+            state.wall_dir = -1.0;
+            state.wall_coyote = WALL_COYOTE_TIME;
+        } else if wall_right {
+            state.wall_dir = 1.0;
+            state.wall_coyote = WALL_COYOTE_TIME;
+        } else {
+            state.wall_coyote -= time.delta_secs();
+            if state.wall_coyote <= 0.0 {
+                state.wall_dir = 0.0;
+            }
+        }
+    } else {
+        state.wall_dir = 0.0;
+        state.wall_coyote = 0.0;
     }
 }
 
@@ -150,6 +174,7 @@ fn player_movement(
         With<Player>,
     >,
     time: Res<Time>,
+    mut recorder: ResMut<ReplayRecorder>,
 ) {
     let Ok((mut velocity, mut gravity_scale, mut state)) = players.single_mut() else {
         return;
@@ -186,12 +211,47 @@ fn player_movement(
     let kb_dash = keys.just_pressed(KeyCode::KeyE);
 
     // Merge inputs
-    let move_x = if stick_x.abs() > 0.1 { stick_x } else { kb_x };
-    let move_y = if stick_y.abs() > 0.1 { stick_y } else { kb_y };
-    let sprint = !(gp_walk || kb_walk);
-    let jump_pressed = gp_jump_pressed || kb_jump_pressed;
-    let jump_released = gp_jump_released || kb_jump_released;
-    let dash_pressed = gp_dash || kb_dash;
+    let input = MergedInput {
+        move_x: if stick_x.abs() > 0.1 { stick_x } else { kb_x },
+        move_y: if stick_y.abs() > 0.1 { stick_y } else { kb_y },
+        sprint: !(gp_walk || kb_walk),
+        jump_pressed: gp_jump_pressed || kb_jump_pressed,
+        jump_released: gp_jump_released || kb_jump_released,
+        dash_pressed: gp_dash || kb_dash,
+    };
+
+    // Record input for replay
+    recorder.frames.push(FrameInput {
+        move_x: input.move_x,
+        move_y: input.move_y,
+        sprint: input.sprint,
+        jump_pressed: input.jump_pressed,
+        jump_released: input.jump_released,
+        dash_pressed: input.dash_pressed,
+    });
+
+    apply_movement(
+        &input,
+        &mut velocity,
+        &mut gravity_scale,
+        &mut state,
+        time.delta_secs(),
+    );
+}
+
+pub fn apply_movement(
+    input: &MergedInput,
+    velocity: &mut LinearVelocity,
+    gravity_scale: &mut GravityScale,
+    state: &mut PlayerState,
+    dt: f32,
+) {
+    let move_x = input.move_x;
+    let move_y = input.move_y;
+    let sprint = input.sprint;
+    let jump_pressed = input.jump_pressed;
+    let jump_released = input.jump_released;
+    let dash_pressed = input.dash_pressed;
 
     // Dash initiation — snapped to 8 directions, once per ground touch
     if dash_pressed && state.has_air_dash && !state.dashing {
@@ -211,7 +271,6 @@ fn player_movement(
     }
 
     // Jump buffer
-    let dt = time.delta_secs();
     if jump_pressed {
         state.jump_buffer = JUMP_BUFFER;
     } else {

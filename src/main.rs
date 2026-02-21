@@ -1,6 +1,7 @@
 mod camera;
 mod level;
 mod player;
+mod replay;
 mod ui;
 mod walls;
 
@@ -28,9 +29,13 @@ fn main() {
             player::PlayerPlugin,
             camera::CameraPlugin,
             ui::UiPlugin,
+            replay::ReplayPlugin,
         ))
         .add_systems(Startup, setup)
-        .add_systems(Update, close_on_escape)
+        .add_systems(
+            Update,
+            close_on_escape.run_if(in_state(level::GamePhase::TitleScreen)),
+        )
         .run();
 }
 
