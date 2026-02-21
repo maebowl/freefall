@@ -1,4 +1,4 @@
-use std::sync::mpsc;
+use std::sync::{mpsc, Mutex};
 
 use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -47,29 +47,31 @@ fn deserialize_seed<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result
     s.parse().map_err(serde::de::Error::custom)
 }
 
-#[derive(Event)]
-pub struct SubmitScoreEvent {
+// Resource-based signaling (instead of events)
+
+#[derive(Resource, Default)]
+pub struct PendingSubmission(pub Option<SubmissionData>);
+
+pub struct SubmissionData {
     pub time: f32,
     pub seed: u64,
     pub level: u32,
     pub inputs: Vec<FrameInput>,
 }
 
-#[derive(Event)]
-pub struct FetchReplayEvent {
-    pub index: usize,
-}
+#[derive(Resource, Default)]
+pub struct PendingReplayFetch(pub Option<usize>);
 
-// --- Internal channel resources ---
+// --- Internal channel resources (Mutex for Sync) ---
 
 #[derive(Resource)]
-struct LeaderboardReceiver(mpsc::Receiver<Result<Vec<OnlineEntry>, String>>);
+struct LeaderboardReceiver(Mutex<mpsc::Receiver<Result<Vec<OnlineEntry>, String>>>);
 
 #[derive(Resource)]
-struct SubmitReceiver(mpsc::Receiver<Result<(), String>>);
+struct SubmitReceiver(Mutex<mpsc::Receiver<Result<(), String>>>);
 
 #[derive(Resource)]
-struct ReplayReceiver(mpsc::Receiver<Result<ReplayPayload, String>>);
+struct ReplayReceiver(Mutex<mpsc::Receiver<Result<ReplayPayload, String>>>);
 
 #[derive(Resource, Default)]
 pub struct ReplayFetchStatus {
@@ -97,8 +99,8 @@ impl Plugin for NetPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<OnlineLeaderboard>()
             .init_resource::<ReplayFetchStatus>()
-            .add_event::<SubmitScoreEvent>()
-            .add_event::<FetchReplayEvent>()
+            .init_resource::<PendingSubmission>()
+            .init_resource::<PendingReplayFetch>()
             .add_systems(OnEnter(GamePhase::TitleScreen), trigger_fetch_leaderboard)
             .add_systems(
                 Update,
@@ -121,7 +123,7 @@ fn trigger_fetch_leaderboard(
 ) {
     leaderboard.status = NetStatus::Fetching;
     let (tx, rx) = mpsc::channel();
-    commands.insert_resource(LeaderboardReceiver(rx));
+    commands.insert_resource(LeaderboardReceiver(Mutex::new(rx)));
 
     std::thread::spawn(move || {
         let result = fetch_leaderboard_http();
@@ -145,7 +147,8 @@ fn poll_leaderboard_response(
     receiver: Option<Res<LeaderboardReceiver>>,
 ) {
     let Some(receiver) = receiver else { return };
-    match receiver.0.try_recv() {
+    let rx = receiver.0.lock().unwrap();
+    match rx.try_recv() {
         Ok(Ok(entries)) => {
             leaderboard.entries = entries;
             leaderboard.status = NetStatus::Ready;
@@ -167,27 +170,22 @@ fn poll_leaderboard_response(
 
 fn handle_submit_score(
     mut commands: Commands,
-    mut events: EventReader<SubmitScoreEvent>,
+    mut pending: ResMut<PendingSubmission>,
     player_name: Option<Res<PlayerName>>,
 ) {
-    for event in events.read() {
-        let name = player_name
-            .as_ref()
-            .map(|n| n.0.clone())
-            .unwrap_or_else(|| "Anonymous".into());
-        let time = event.time;
-        let seed = event.seed;
-        let level = event.level;
-        let inputs = event.inputs.clone();
+    let Some(data) = pending.0.take() else { return };
+    let name = player_name
+        .as_ref()
+        .map(|n| n.0.clone())
+        .unwrap_or_else(|| "Anonymous".into());
 
-        let (tx, rx) = mpsc::channel();
-        commands.insert_resource(SubmitReceiver(rx));
+    let (tx, rx) = mpsc::channel();
+    commands.insert_resource(SubmitReceiver(Mutex::new(rx)));
 
-        std::thread::spawn(move || {
-            let result = submit_score_http(time, &name, seed, level, &inputs);
-            let _ = tx.send(result);
-        });
-    }
+    std::thread::spawn(move || {
+        let result = submit_score_http(data.time, &name, data.seed, data.level, &data.inputs);
+        let _ = tx.send(result);
+    });
 }
 
 fn submit_score_http(
@@ -225,12 +223,13 @@ fn poll_submit_response(
     mut leaderboard: ResMut<OnlineLeaderboard>,
 ) {
     let Some(receiver) = receiver else { return };
-    match receiver.0.try_recv() {
+    let rx = receiver.0.lock().unwrap();
+    match rx.try_recv() {
         Ok(Ok(())) => {
             // Re-fetch leaderboard after successful submission
             leaderboard.status = NetStatus::Fetching;
             let (tx, rx) = mpsc::channel();
-            commands.insert_resource(LeaderboardReceiver(rx));
+            commands.insert_resource(LeaderboardReceiver(Mutex::new(rx)));
             std::thread::spawn(move || {
                 let result = fetch_leaderboard_http();
                 let _ = tx.send(result);
@@ -248,20 +247,19 @@ fn poll_submit_response(
 
 fn handle_fetch_replay(
     mut commands: Commands,
-    mut events: EventReader<FetchReplayEvent>,
+    mut pending: ResMut<PendingReplayFetch>,
     mut status: ResMut<ReplayFetchStatus>,
 ) {
-    for event in events.read() {
-        status.loading = true;
-        let index = event.index;
-        let (tx, rx) = mpsc::channel();
-        commands.insert_resource(ReplayReceiver(rx));
+    let Some(index) = pending.0.take() else { return };
+    status.loading = true;
 
-        std::thread::spawn(move || {
-            let result = fetch_replay_http(index);
-            let _ = tx.send(result);
-        });
-    }
+    let (tx, rx) = mpsc::channel();
+    commands.insert_resource(ReplayReceiver(Mutex::new(rx)));
+
+    std::thread::spawn(move || {
+        let result = fetch_replay_http(index);
+        let _ = tx.send(result);
+    });
 }
 
 fn fetch_replay_http(index: usize) -> Result<ReplayPayload, String> {
@@ -282,7 +280,8 @@ fn poll_replay_response(
     mut status: ResMut<ReplayFetchStatus>,
 ) {
     let Some(receiver) = receiver else { return };
-    match receiver.0.try_recv() {
+    let rx = receiver.0.lock().unwrap();
+    match rx.try_recv() {
         Ok(Ok(payload)) => {
             replay_data.frames = payload.inputs;
             replay_data.seed = payload.seed;

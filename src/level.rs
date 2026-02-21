@@ -5,9 +5,9 @@ use bevy::prelude::*;
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
 
-use crate::net::SubmitScoreEvent;
+use crate::net::{PendingSubmission, SubmissionData};
 use crate::player::{spawn_player, Player};
-use crate::replay::{ReplayData, ReplayRecorder};
+use crate::replay::ReplayRecorder;
 use crate::ui::{Leaderboard, SpeedrunTimer};
 use crate::walls::Wall;
 
@@ -613,7 +613,7 @@ fn checkpoint_collision(
     mut timer: ResMut<SpeedrunTimer>,
     mut leaderboard: ResMut<Leaderboard>,
     recorder: Res<ReplayRecorder>,
-    mut submit_events: EventWriter<SubmitScoreEvent>,
+    mut pending: ResMut<PendingSubmission>,
 ) {
     let Ok(player) = player_query.single() else {
         return;
@@ -632,7 +632,7 @@ fn checkpoint_collision(
                     recorder.frames.clone(),
                 );
                 // Submit score to online leaderboard
-                submit_events.write(SubmitScoreEvent {
+                pending.0 = Some(SubmissionData {
                     time: timer.elapsed,
                     seed: recorder.seed,
                     level: recorder.level,

@@ -1,7 +1,7 @@
 use bevy::prelude::*;
 
 use crate::level::GamePhase;
-use crate::net::{FetchReplayEvent, NetStatus, OnlineLeaderboard, ReplayFetchStatus};
+use crate::net::{NetStatus, OnlineLeaderboard, PendingReplayFetch, ReplayFetchStatus};
 use crate::replay::{FrameInput, ReplayData};
 
 // --- Resources ---
@@ -301,7 +301,7 @@ fn navigate_leaderboard(
     existing: Query<Entity, With<LeaderboardUi>>,
     mut next_state: ResMut<NextState<GamePhase>>,
     mut replay_data: ResMut<ReplayData>,
-    mut fetch_replay_events: EventWriter<FetchReplayEvent>,
+    mut pending_replay: ResMut<PendingReplayFetch>,
     replay_status: Res<ReplayFetchStatus>,
 ) {
     if !visible.0 {
@@ -353,7 +353,7 @@ fn navigate_leaderboard(
         }
         if use_online {
             // Fetch replay from server
-            fetch_replay_events.write(FetchReplayEvent { index: selection.0 });
+            pending_replay.0 = Some(selection.0);
             // Rebuild UI to show loading state
             for entity in &existing {
                 commands.entity(entity).despawn();
