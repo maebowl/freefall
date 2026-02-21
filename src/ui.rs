@@ -1,8 +1,6 @@
-use std::collections::HashMap;
-
 use bevy::prelude::*;
 
-use crate::level::{GamePhase, LevelCounter};
+use crate::level::GamePhase;
 
 // --- Resources ---
 
@@ -25,7 +23,7 @@ impl Default for SpeedrunTimer {
 
 #[derive(Resource, Default)]
 pub struct Leaderboard {
-    pub times: HashMap<u32, Vec<f32>>,
+    pub times: Vec<f32>,
 }
 
 #[derive(Resource, Default)]
@@ -195,13 +193,12 @@ fn tick_timer(mut timer: ResMut<SpeedrunTimer>, time: Res<Time>) {
 
 fn update_timer_display(
     timer: Res<SpeedrunTimer>,
-    level_counter: Res<LevelCounter>,
     mut query: Query<&mut Text, With<TimerText>>,
 ) {
     let elapsed = timer.final_time.unwrap_or(timer.elapsed);
     let minutes = (elapsed / 60.0) as u32;
     let seconds = elapsed % 60.0;
-    let text = format!("Level {}  {:02}:{:06.3}", level_counter.0, minutes, seconds);
+    let text = format!("{:02}:{:06.3}", minutes, seconds);
     for mut t in &mut query {
         **t = text.clone();
     }
@@ -303,47 +300,27 @@ fn spawn_leaderboard(commands: &mut Commands, leaderboard: &Leaderboard) {
                             TextColor(Color::srgb(0.6, 0.6, 0.6)),
                         ));
                     } else {
-                        let mut levels: Vec<_> = leaderboard.times.keys().copied().collect();
-                        levels.sort();
-
-                        for level in levels {
-                            if let Some(times) = leaderboard.times.get(&level) {
-                                panel.spawn((
-                                    Text::new(format!("Level {}", level)),
-                                    TextFont {
-                                        font_size: 22.0,
-                                        ..default()
-                                    },
-                                    TextColor(Color::srgb(0.9, 0.9, 0.9)),
-                                    Node {
-                                        margin: UiRect::top(Val::Px(8.0)),
-                                        ..default()
-                                    },
-                                ));
-
-                                for (i, time) in times.iter().enumerate() {
-                                    let minutes = (*time / 60.0) as u32;
-                                    let seconds = *time % 60.0;
-                                    let color = if i == 0 {
-                                        Color::srgb(0.2, 0.9, 0.3)
-                                    } else {
-                                        Color::srgb(0.8, 0.8, 0.8)
-                                    };
-                                    panel.spawn((
-                                        Text::new(format!(
-                                            "  #{}  {:02}:{:06.3}",
-                                            i + 1,
-                                            minutes,
-                                            seconds
-                                        )),
-                                        TextFont {
-                                            font_size: 20.0,
-                                            ..default()
-                                        },
-                                        TextColor(color),
-                                    ));
-                                }
-                            }
+                        for (i, time) in leaderboard.times.iter().enumerate() {
+                            let minutes = (*time / 60.0) as u32;
+                            let seconds = *time % 60.0;
+                            let color = if i == 0 {
+                                Color::srgb(0.2, 0.9, 0.3)
+                            } else {
+                                Color::srgb(0.8, 0.8, 0.8)
+                            };
+                            panel.spawn((
+                                Text::new(format!(
+                                    "#{}  {:02}:{:06.3}",
+                                    i + 1,
+                                    minutes,
+                                    seconds
+                                )),
+                                TextFont {
+                                    font_size: 20.0,
+                                    ..default()
+                                },
+                                TextColor(color),
+                            ));
                         }
                     }
 

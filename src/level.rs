@@ -578,7 +578,6 @@ fn checkpoint_collision(
     mut next_state: ResMut<NextState<GamePhase>>,
     mut timer: ResMut<SpeedrunTimer>,
     mut leaderboard: ResMut<Leaderboard>,
-    level_counter: Res<LevelCounter>,
 ) {
     let Ok(player) = player_query.single() else {
         return;
@@ -590,10 +589,9 @@ fn checkpoint_collision(
             if timer.final_time.is_none() {
                 timer.running = false;
                 timer.final_time = Some(timer.elapsed);
-                let times = leaderboard.times.entry(level_counter.0).or_default();
-                times.push(timer.elapsed);
-                times.sort_by(|a, b| a.partial_cmp(b).unwrap());
-                times.truncate(5);
+                leaderboard.times.push(timer.elapsed);
+                leaderboard.times.sort_by(|a, b| a.partial_cmp(b).unwrap());
+                leaderboard.times.truncate(5);
             }
             next_state.set(GamePhase::Transitioning);
             return;
