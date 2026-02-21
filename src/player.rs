@@ -159,7 +159,7 @@ fn player_movement(
     let gamepad = gamepads.iter().next();
     let stick_x = gamepad.map(|g| g.left_stick().x).unwrap_or(0.0);
     let stick_y = gamepad.map(|g| g.left_stick().y).unwrap_or(0.0);
-    let gp_sprint =
+    let gp_walk =
         gamepad.is_some_and(|g| g.get(GamepadButton::RightTrigger2).unwrap_or(0.0) > 0.5);
     let gp_jump_pressed = gamepad.is_some_and(|g| g.just_pressed(GamepadButton::South));
     let gp_jump_released = gamepad.is_some_and(|g| g.just_released(GamepadButton::South));
@@ -180,7 +180,7 @@ fn player_movement(
     } else {
         0.0
     };
-    let kb_sprint = keys.pressed(KeyCode::ShiftLeft);
+    let kb_walk = keys.pressed(KeyCode::ShiftLeft);
     let kb_jump_pressed = keys.just_pressed(KeyCode::Space);
     let kb_jump_released = keys.just_released(KeyCode::Space);
     let kb_dash = keys.just_pressed(KeyCode::KeyE);
@@ -188,7 +188,7 @@ fn player_movement(
     // Merge inputs
     let move_x = if stick_x.abs() > 0.1 { stick_x } else { kb_x };
     let move_y = if stick_y.abs() > 0.1 { stick_y } else { kb_y };
-    let sprint = gp_sprint || kb_sprint;
+    let sprint = !(gp_walk || kb_walk);
     let jump_pressed = gp_jump_pressed || kb_jump_pressed;
     let jump_released = gp_jump_released || kb_jump_released;
     let dash_pressed = gp_dash || kb_dash;
