@@ -185,7 +185,8 @@ fn generate_wall_corridor(
     let corridor_w = rng.random_range(4..=6);
     let corridor_x = entry_x.clamp(playable_left, playable_right - corridor_w);
 
-    for y in y_start..y_end {
+    // Stop walls 3 rows short of the top so the exit isn't blocked
+    for y in y_start..(y_end - 3).max(y_start) {
         // Left wall of corridor
         if corridor_x > playable_left {
             for x in playable_left..corridor_x {
