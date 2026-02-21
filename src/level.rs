@@ -560,10 +560,12 @@ fn cleanup_level(
 
 fn regenerate_level(
     keys: Res<ButtonInput<KeyCode>>,
+    gamepads: Query<&Gamepad>,
     mut next_state: ResMut<NextState<GamePhase>>,
     mut level_counter: ResMut<LevelCounter>,
 ) {
-    if keys.just_pressed(KeyCode::KeyR) {
+    let gp_regen = gamepads.iter().next().is_some_and(|g| g.just_pressed(GamepadButton::Select));
+    if keys.just_pressed(KeyCode::KeyR) || gp_regen {
         // Keep same level number — just regenerate
         level_counter.0 = level_counter.0.saturating_sub(1);
         next_state.set(GamePhase::Transitioning);
