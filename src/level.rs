@@ -205,6 +205,7 @@ fn generate_wall_corridor(
         }
     }
 
+    corridor_x + corridor_w / 2
 }
 
 fn generate_scattered_platforms(
