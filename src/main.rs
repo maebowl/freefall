@@ -34,7 +34,7 @@ fn main() {
         .add_systems(Startup, setup)
         .add_systems(
             Update,
-            close_on_escape.run_if(in_state(level::GamePhase::TitleScreen)),
+            close_on_escape.run_if(not(in_state(level::GamePhase::Replaying))),
         )
         .run();
 }
