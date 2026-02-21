@@ -1,6 +1,7 @@
 use avian2d::prelude::*;
 use bevy::prelude::*;
-use bevy_ecs_ldtk::prelude::*;
+
+use crate::level::GamePhase;
 
 const WALK_SPEED: f32 = 120.0;
 const SPRINT_MULTIPLIER: f32 = 1.8;
@@ -53,36 +54,32 @@ impl Default for PlayerState {
     }
 }
 
-#[derive(Default, Bundle, LdtkEntity)]
-pub struct PlayerBundle {
-    player: Player,
-}
-
 pub struct PlayerPlugin;
 
 impl Plugin for PlayerPlugin {
     fn build(&self, app: &mut App) {
-        app.register_ldtk_entity::<PlayerBundle>("PlayerStart")
-            .add_systems(
-                Update,
-                (setup_player, ground_detection, player_movement).chain(),
-            );
+        app.add_systems(
+            Update,
+            (ground_detection, player_movement)
+                .chain()
+                .run_if(in_state(GamePhase::Playing)),
+        );
     }
 }
 
-fn setup_player(mut commands: Commands, query: Query<Entity, Added<Player>>) {
-    for entity in &query {
-        commands.entity(entity).insert((
-            PlayerState::default(),
-            RigidBody::Dynamic,
-            Collider::rectangle(14.0, 14.0),
-            LinearVelocity::default(),
-            GravityScale(1.0),
-            Friction::new(0.0),
-            LockedAxes::ROTATION_LOCKED,
-            Sprite::from_color(Color::srgb(0.4, 0.7, 1.0), Vec2::splat(16.0)),
-        ));
-    }
+pub fn spawn_player(commands: &mut Commands, position: Vec2) {
+    commands.spawn((
+        Player,
+        PlayerState::default(),
+        RigidBody::Dynamic,
+        Collider::rectangle(14.0, 14.0),
+        LinearVelocity::default(),
+        GravityScale(1.0),
+        Friction::new(0.0),
+        LockedAxes::ROTATION_LOCKED,
+        Sprite::from_color(Color::srgb(0.4, 0.7, 1.0), Vec2::splat(16.0)),
+        Transform::from_translation(position.extend(0.0)),
+    ));
 }
 
 fn ground_detection(

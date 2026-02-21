@@ -1,15 +1,13 @@
 mod camera;
+mod level;
 mod player;
 mod walls;
 
 use avian2d::prelude::*;
 use bevy::prelude::*;
-use bevy_embedded_assets::EmbeddedAssetPlugin;
-use bevy_ecs_ldtk::prelude::*;
 
 fn main() {
     App::new()
-        .add_plugins(EmbeddedAssetPlugin::default())
         .add_plugins(
             DefaultPlugins
                 .set(WindowPlugin {
@@ -22,13 +20,11 @@ fn main() {
                 })
                 .set(ImagePlugin::default_nearest()),
         )
-        .add_plugins(LdtkPlugin)
         .add_plugins(PhysicsPlugins::default().with_length_unit(16.0))
         .insert_resource(Gravity(Vec2::NEG_Y * 600.0))
-        .insert_resource(LevelSelection::index(0))
         .add_plugins((
+            level::LevelPlugin,
             player::PlayerPlugin,
-            walls::WallPlugin,
             camera::CameraPlugin,
         ))
         .add_systems(Startup, setup)
@@ -48,7 +44,7 @@ fn close_on_escape(
     }
 }
 
-fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
+fn setup(mut commands: Commands) {
     commands.spawn((
         Camera2d,
         Projection::Orthographic(OrthographicProjection {
@@ -56,8 +52,4 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
             ..OrthographicProjection::default_2d()
         }),
     ));
-    commands.spawn(LdtkWorldBundle {
-        ldtk_handle: asset_server.load("freefall.ldtk").into(),
-        ..default()
-    });
 }

@@ -1,6 +1,8 @@
 # Freefall
 
-A 2D platformer built with Bevy 0.18, bevy_ecs_ldtk, and avian2d physics.
+A 2D platformer with procedurally generated levels, built with Bevy 0.18 and avian2d physics.
+
+Climb procedurally generated vertical towers using jumps, wall jumps, dashes, and wavedashes. Reach the green checkpoint at the top to advance to the next level. Each level gets progressively harder with narrower platforms, wider gaps, and more demanding sections.
 
 ## Prerequisites
 
@@ -31,12 +33,6 @@ sudo dnf install wayland-devel libxkbcommon-devel libudev-devel alsa-lib-devel v
 cargo run
 ```
 
-Pull latest changes and run in one command:
-
-```sh
-git pull && cargo run
-```
-
 For playable performance, dependencies are optimized even in dev builds (`[profile.dev.package."*"] opt-level = 2` in Cargo.toml). The first build will be slow; subsequent rebuilds are fast.
 
 ## Controls
@@ -50,4 +46,6 @@ For playable performance, dependencies are optimized even in dev builds (`[profi
 
 - **Variable jump**: release jump early for a shorter hop
 - **Dash**: eight-way burst, once per ground touch; briefly disables gravity
-- **Coyote time**: short grace period to jump after walking off an edge
+- **Wavedash**: dash into the ground then jump to preserve momentum
+- **Wall jump**: jump while sliding on a wall to kick off in the opposite direction
+- **Wall slide**: hold toward a wall while airborne to slow your descent
