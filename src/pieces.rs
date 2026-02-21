@@ -238,9 +238,15 @@ fn build_piece_library() -> Vec<Piece> {
 
 /// Stamp a piece into the full level grid at the given y offset.
 /// piece_y is the bottom row of the piece in the level grid.
+/// Skips the entry row (bottom) and exit row (top) — those rows only
+/// define connector positions and should not create physical barriers.
 fn stamp_piece(level_grid: &mut Vec<Vec<bool>>, piece: &Piece, piece_y: i32) {
     let grid_h = level_grid.len() as i32;
     for py in 0..piece.height {
+        // Skip entry row (bottom, py = height-1) and exit row (top, py = 0)
+        if py == 0 || py == piece.height - 1 {
+            continue;
+        }
         // Piece row 0 is the top (exit), last row is bottom (entry).
         // We place bottom of piece at piece_y, growing upward.
         let level_y = piece_y + (piece.height - 1 - py);
