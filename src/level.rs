@@ -42,6 +42,9 @@ pub struct LevelSeed(pub u64);
 #[derive(Resource)]
 pub struct SpawnPoint(pub Vec2);
 
+#[derive(Resource, Default)]
+pub struct ShouldReposition(pub bool);
+
 #[derive(Component)]
 pub struct LevelEntity;
 
@@ -71,6 +74,7 @@ impl Plugin for LevelPlugin {
             .init_resource::<ZenRun>()
             .insert_resource(LevelSeed(0))
             .insert_resource(SpawnPoint(Vec2::ZERO))
+            .init_resource::<ShouldReposition>()
             .add_systems(OnEnter(GamePhase::Generating), generate_level)
             .add_systems(OnEnter(GamePhase::Playing), reposition_player)
             .add_systems(OnEnter(GamePhase::Transitioning), cleanup_level)
@@ -242,7 +246,10 @@ fn generate_level(
     game_mode: Res<GameMode>,
     current_level: Res<CurrentLevel>,
     mut zen_run: ResMut<ZenRun>,
+    mut should_reposition: ResMut<ShouldReposition>,
 ) {
+    should_reposition.0 = true;
+
     if *game_mode == GameMode::Zen {
         zen_run.max_height = 0.0;
     }
@@ -291,7 +298,13 @@ fn generate_level(
 fn reposition_player(
     spawn_point: Res<SpawnPoint>,
     mut players: Query<(&mut Transform, &mut LinearVelocity, &mut Visibility), With<Player>>,
+    mut should_reposition: ResMut<ShouldReposition>,
 ) {
+    if !should_reposition.0 {
+        return;
+    }
+    should_reposition.0 = false;
+
     for (mut tf, mut vel, mut vis) in &mut players {
         tf.translation = spawn_point.0.extend(0.0);
         vel.0 = Vec2::ZERO;

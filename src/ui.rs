@@ -120,9 +120,15 @@ const MAX_NAME_LEN: usize = 16;
 #[derive(Resource, Default)]
 pub struct DeferredSubmission(pub Option<crate::net::SubmissionData>);
 
-#[derive(Resource, Default)]
+#[derive(Resource)]
 pub struct ZenLeaderboard {
     pub heights: Vec<f32>,
+}
+
+impl Default for ZenLeaderboard {
+    fn default() -> Self {
+        Self { heights: load_zen_heights() }
+    }
 }
 
 impl ZenLeaderboard {
@@ -130,7 +136,30 @@ impl ZenLeaderboard {
         self.heights.push(height);
         self.heights.sort_by(|a, b| b.partial_cmp(a).unwrap());
         self.heights.truncate(5);
+        save_zen_heights(&self.heights);
     }
+}
+
+fn zen_leaderboard_path() -> std::path::PathBuf {
+    let home = std::env::var("HOME").unwrap_or_else(|_| ".".into());
+    std::path::PathBuf::from(home).join(".freefall").join("zen_leaderboard.json")
+}
+
+fn load_zen_heights() -> Vec<f32> {
+    let path = zen_leaderboard_path();
+    let data = match std::fs::read_to_string(path) {
+        Ok(d) => d,
+        Err(_) => return Vec::new(),
+    };
+    serde_json::from_str(&data).unwrap_or_default()
+}
+
+fn save_zen_heights(heights: &[f32]) {
+    let path = zen_leaderboard_path();
+    if let Some(parent) = path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    let _ = std::fs::write(path, serde_json::to_string(heights).unwrap_or_default());
 }
 
 // --- On-screen keyboard ---
