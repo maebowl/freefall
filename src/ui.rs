@@ -1311,7 +1311,7 @@ fn update_timer_display(
             .next()
             .map(|tf| (tf.translation.y - spawn_point.0.y).max(0.0))
             .unwrap_or(0.0);
-        let current_height = (zen_run.accumulated + player_height) / 16.0;
+        let current_height = player_height / 16.0;
         zen_run.max_height = zen_run.max_height.max(current_height);
         let text = format!("{}m", current_height as u32);
         for mut t in &mut query {

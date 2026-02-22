@@ -317,6 +317,88 @@ fn generate_bridge(
     }
 }
 
+/// Returns (grid, grid_height) for zen mode — no ceiling, no checkpoint.
+pub fn select_and_layout_zen(seed: u64) -> (Vec<Vec<bool>>, i32) {
+    let mut rng = StdRng::seed_from_u64(seed);
+    let pieces = build_piece_library();
+
+    let grid_h = 500_i32;
+    let grid_w = GRID_W;
+
+    let mut grid = vec![vec![false; grid_w as usize]; grid_h as usize];
+
+    // Floor
+    for y in 0..FLOOR_H {
+        for x in 0..grid_w {
+            grid[y as usize][x as usize] = true;
+        }
+    }
+
+    // Side walls (no ceiling)
+    for y in 0..grid_h {
+        for x in 0..SIDE_WALL {
+            grid[y as usize][x as usize] = true;
+        }
+        for x in (grid_w - SIDE_WALL)..grid_w {
+            grid[y as usize][x as usize] = true;
+        }
+    }
+
+    // Landing platform at center
+    let center_x = PLAYABLE_W / 2 - 2;
+    let landing_y = FLOOR_H;
+    for dx in 0..5 {
+        let x = SIDE_WALL + center_x + dx;
+        if x >= 0 && x < grid_w {
+            grid[landing_y as usize][x as usize] = true;
+        }
+    }
+
+    let mut y = FLOOR_H + 2;
+    let mut prev_exit_x = center_x;
+    let mut prev_exit_w = 5;
+    let top_limit = grid_h - 10;
+
+    while y + 6 <= top_limit {
+        let piece_idx = rng.random_range(0..pieces.len());
+        let piece = &pieces[piece_idx];
+
+        if y + piece.height > top_limit {
+            break;
+        }
+
+        let overlap_start = prev_exit_x.max(piece.entry.x);
+        let overlap_end = (prev_exit_x + prev_exit_w).min(piece.entry.x + piece.entry.w);
+        let overlap = overlap_end - overlap_start;
+
+        if overlap >= 4 {
+            stamp_piece(&mut grid, piece, y);
+            prev_exit_x = piece.exit.x;
+            prev_exit_w = piece.exit.w;
+            y += piece.height;
+        } else {
+            if y + 3 + piece.height > top_limit {
+                break;
+            }
+            generate_bridge(
+                &mut grid,
+                y,
+                prev_exit_x,
+                prev_exit_w,
+                piece.entry.x,
+                piece.entry.w,
+            );
+            y += 3;
+            stamp_piece(&mut grid, piece, y);
+            prev_exit_x = piece.exit.x;
+            prev_exit_w = piece.exit.w;
+            y += piece.height;
+        }
+    }
+
+    (grid, grid_h)
+}
+
 /// Returns (grid, grid_height, checkpoint_x, checkpoint_y)
 /// checkpoint_x and checkpoint_y are in grid coordinates.
 pub fn select_and_layout(seed: u64) -> (Vec<Vec<bool>>, i32, i32, i32) {

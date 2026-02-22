@@ -49,12 +49,8 @@ pub struct Checkpoint;
 
 #[derive(Resource, Default)]
 pub struct ZenRun {
-    pub accumulated: f32,
     pub max_height: f32,
 }
-
-#[derive(Resource, Default)]
-pub struct ZenContinuing(pub bool);
 
 pub struct LevelPlugin;
 
@@ -64,7 +60,6 @@ impl Plugin for LevelPlugin {
             .init_resource::<GameMode>()
             .init_resource::<CurrentLevel>()
             .init_resource::<ZenRun>()
-            .init_resource::<ZenContinuing>()
             .insert_resource(LevelSeed(0))
             .insert_resource(SpawnPoint(Vec2::ZERO))
             .add_systems(OnEnter(GamePhase::Generating), generate_level)
@@ -223,6 +218,52 @@ pub fn build_level(
     Vec2::new(sp_x, sp_y)
 }
 
+/// Generates a tall zen level with no checkpoint and no ceiling.
+pub fn build_zen_level(
+    commands: &mut Commands,
+    seed: u64,
+) -> Vec2 {
+    let (grid, grid_h) = pieces::select_and_layout_zen(seed);
+
+    let rects = merge_grid_to_rects(&grid);
+
+    let level_entity = commands
+        .spawn((
+            LevelEntity,
+            Transform::default(),
+            Visibility::default(),
+        ))
+        .id();
+
+    commands.entity(level_entity).with_children(|parent| {
+        for rect in &rects {
+            let w = (rect.right - rect.left + 1) as f32 * TILE;
+            let h = (rect.top - rect.bottom + 1) as f32 * TILE;
+            let cx = (rect.left + rect.right + 1) as f32 * TILE / 2.0;
+            let cy = (rect.bottom + rect.top + 1) as f32 * TILE / 2.0;
+
+            parent.spawn((
+                Wall,
+                Collider::rectangle(w, h),
+                RigidBody::Static,
+                Friction::new(0.0),
+                Sprite::from_color(
+                    Color::srgb(0.55, 0.35, 0.2),
+                    Vec2::new(w, h),
+                ),
+                Transform::from_xyz(cx, cy, 0.0),
+            ));
+        }
+    });
+
+    let sp_x = (GRID_W as f32 / 2.0) * TILE;
+    let sp_y = (3.0 + 1.5) * TILE;
+
+    info!("Generated zen level ({}x{} grid, seed {})", GRID_W, grid_h, seed);
+
+    Vec2::new(sp_x, sp_y)
+}
+
 fn generate_level(
     mut commands: Commands,
     asset_server: Res<AssetServer>,
@@ -234,15 +275,9 @@ fn generate_level(
     game_mode: Res<GameMode>,
     current_level: Res<CurrentLevel>,
     mut zen_run: ResMut<ZenRun>,
-    mut zen_continuing: ResMut<ZenContinuing>,
 ) {
     if *game_mode == GameMode::Zen {
-        if zen_continuing.0 {
-            zen_continuing.0 = false;
-        } else {
-            zen_run.accumulated = 0.0;
-            zen_run.max_height = 0.0;
-        }
+        zen_run.max_height = 0.0;
     }
 
     let sp = match *game_mode {
@@ -257,7 +292,7 @@ fn generate_level(
                 .unwrap_or_default()
                 .as_nanos() as u64;
             level_seed.0 = seed;
-            build_level(&mut commands, seed)
+            build_zen_level(&mut commands, seed)
         }
     };
 
@@ -317,36 +352,22 @@ fn regenerate_level(
 
 fn checkpoint_collision(
     collisions: Collisions,
-    mut player_query: Query<(Entity, &Transform, &mut Visibility), With<Player>>,
+    mut player_query: Query<(Entity, &mut Visibility), With<Player>>,
     checkpoint_query: Query<Entity, With<Checkpoint>>,
     mut next_state: ResMut<NextState<GamePhase>>,
     mut timer: ResMut<SpeedrunTimer>,
     mut leaderboard: ResMut<Leaderboard>,
     recorder: Res<ReplayRecorder>,
     mut deferred: ResMut<DeferredSubmission>,
-    game_mode: Res<GameMode>,
     current_level: Res<CurrentLevel>,
     mut last_run: ResMut<LastRunTime>,
-    spawn_point: Res<SpawnPoint>,
-    mut zen_run: ResMut<ZenRun>,
-    mut zen_continuing: ResMut<ZenContinuing>,
 ) {
-    let Ok((player, player_tf, mut player_vis)) = player_query.single_mut() else {
+    let Ok((player, mut player_vis)) = player_query.single_mut() else {
         return;
     };
 
     for checkpoint in &checkpoint_query {
         if collisions.contains(player, checkpoint) {
-            if *game_mode == GameMode::Zen {
-                let height_gained = (player_tf.translation.y - spawn_point.0.y).max(0.0);
-                zen_run.accumulated += height_gained;
-                let current_height = zen_run.accumulated / TILE;
-                zen_run.max_height = zen_run.max_height.max(current_height);
-                zen_continuing.0 = true;
-                next_state.set(GamePhase::Transitioning);
-                return;
-            }
-
             *player_vis = Visibility::Hidden;
             if timer.final_time.is_none() {
                 timer.running = false;
