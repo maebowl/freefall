@@ -50,7 +50,10 @@ impl Leaderboard {
 }
 
 #[derive(Resource, Default)]
-struct LeaderboardVisible(bool);
+struct LeaderboardVisible {
+    visible: bool,
+    cached_time: Option<f32>,
+}
 
 #[derive(Resource, Default)]
 struct LeaderboardSelection(usize);
@@ -155,7 +158,7 @@ fn despawn_marked<T: Component>(mut commands: Commands, query: Query<Entity, Wit
 }
 
 fn clear_leaderboard_visible(mut visible: ResMut<LeaderboardVisible>) {
-    visible.0 = false;
+    visible.visible = false;
 }
 
 // --- Title screen ---
@@ -273,7 +276,7 @@ fn title_screen_input(
     mut title_sel: ResMut<TitleSelection>,
     mut commands: Commands,
     existing: Query<Entity, With<TitleScreenUi>>,
-    mut exit: EventWriter<AppExit>,
+    mut exit: MessageWriter<AppExit>,
 ) {
     let gamepad = gamepads.iter().next();
     let max_idx = TITLE_OPTIONS.len().saturating_sub(1);
@@ -321,7 +324,7 @@ fn title_screen_input(
             }
             2 => {
                 // Quit
-                exit.write(AppExit::Success);
+                exit.send(AppExit::Success);
             }
             _ => {}
         }
@@ -329,7 +332,7 @@ fn title_screen_input(
 
     // Escape quits from title screen
     if keys.just_pressed(KeyCode::Escape) {
-        exit.write(AppExit::Success);
+        exit.send(AppExit::Success);
     }
 }
 
@@ -482,9 +485,11 @@ fn spawn_pause_menu(
     mut pause_sel: ResMut<PauseSelection>,
     game_mode: Res<GameMode>,
     mut leaderboard_visible: ResMut<LeaderboardVisible>,
+    timer: Res<SpeedrunTimer>,
 ) {
     pause_sel.0 = 0;
-    leaderboard_visible.0 = false;
+    leaderboard_visible.visible = false;
+    leaderboard_visible.cached_time = timer.final_time;
     rebuild_pause_menu_spawn(&mut commands, pause_sel.0, &game_mode);
 }
 
@@ -496,8 +501,7 @@ fn pause_menu_input(
     mut commands: Commands,
     existing_pause: Query<Entity, With<PauseUi>>,
     existing_lb: Query<Entity, With<LeaderboardUi>>,
-    level_query: Query<Entity, With<LevelEntity>>,
-    player_query: Query<Entity, With<Player>>,
+    cleanup_query: Query<Entity, Or<(With<LevelEntity>, With<Player>)>>,
     game_mode: Res<GameMode>,
     mut leaderboard_visible: ResMut<LeaderboardVisible>,
     mut lb_selection: ResMut<LeaderboardSelection>,
@@ -506,7 +510,6 @@ fn pause_menu_input(
     mut replay_data: ResMut<ReplayData>,
     mut pending_replay: ResMut<PendingReplayFetch>,
     replay_status: Res<ReplayFetchStatus>,
-    timer: Res<SpeedrunTimer>,
 ) {
     let gamepad = gamepads.iter().next();
 
@@ -517,7 +520,8 @@ fn pause_menu_input(
     let down = keys.just_pressed(KeyCode::ArrowDown) || keys.just_pressed(KeyCode::KeyS) || gp_down;
 
     // If leaderboard is open, handle leaderboard navigation
-    if leaderboard_visible.0 {
+    if leaderboard_visible.visible {
+        let cached_time = leaderboard_visible.cached_time;
         let use_online = !online_leaderboard.entries.is_empty();
         let entry_count = if use_online {
             online_leaderboard.entries.len()
@@ -540,7 +544,7 @@ fn pause_menu_input(
                 for entity in &existing_lb {
                     commands.entity(entity).despawn();
                 }
-                spawn_leaderboard(&mut commands, &local_leaderboard, &online_leaderboard, lb_selection.0, &replay_status, timer.final_time);
+                spawn_leaderboard(&mut commands, &local_leaderboard, &online_leaderboard, lb_selection.0, &replay_status, cached_time);
             }
 
             // Confirm — start replay
@@ -552,7 +556,7 @@ fn pause_menu_input(
                         for entity in &existing_lb {
                             commands.entity(entity).despawn();
                         }
-                        spawn_leaderboard(&mut commands, &local_leaderboard, &online_leaderboard, lb_selection.0, &replay_status, timer.final_time);
+                        spawn_leaderboard(&mut commands, &local_leaderboard, &online_leaderboard, lb_selection.0, &replay_status, cached_time);
                     } else {
                         let entry = &local_leaderboard.entries[lb_selection.0];
                         replay_data.frames = entry.inputs.clone();
@@ -568,7 +572,7 @@ fn pause_menu_input(
         // Close leaderboard (back to pause menu)
         let gp_back = gamepad.is_some_and(|g| g.just_pressed(GamepadButton::East));
         if keys.just_pressed(KeyCode::Escape) || gp_back {
-            leaderboard_visible.0 = false;
+            leaderboard_visible.visible = false;
             for entity in &existing_lb {
                 commands.entity(entity).despawn();
             }
@@ -604,15 +608,12 @@ fn pause_menu_input(
                 next_state.set(GamePhase::Playing);
             }
             "Leaderboard" => {
-                leaderboard_visible.0 = true;
+                leaderboard_visible.visible = true;
                 lb_selection.0 = 0;
-                spawn_leaderboard(&mut commands, &local_leaderboard, &online_leaderboard, lb_selection.0, &replay_status, timer.final_time);
+                spawn_leaderboard(&mut commands, &local_leaderboard, &online_leaderboard, lb_selection.0, &replay_status, leaderboard_visible.cached_time);
             }
             "Title Screen" => {
-                for entity in &level_query {
-                    commands.entity(entity).despawn();
-                }
-                for entity in &player_query {
+                for entity in &cleanup_query {
                     commands.entity(entity).despawn();
                 }
                 next_state.set(GamePhase::TitleScreen);
@@ -808,8 +809,7 @@ fn level_complete_input(
     mut next_state: ResMut<NextState<GamePhase>>,
     mut commands: Commands,
     existing: Query<Entity, With<LevelCompleteUi>>,
-    level_query: Query<Entity, With<LevelEntity>>,
-    player_query: Query<Entity, With<Player>>,
+    cleanup_query: Query<Entity, Or<(With<LevelEntity>, With<Player>)>>,
     game_mode: Res<GameMode>,
     mut current_level: ResMut<CurrentLevel>,
     timer: Res<SpeedrunTimer>,
@@ -854,10 +854,7 @@ fn level_complete_input(
                 next_state.set(GamePhase::Transitioning);
             }
             "Title Screen" => {
-                for entity in &level_query {
-                    commands.entity(entity).despawn();
-                }
-                for entity in &player_query {
+                for entity in &cleanup_query {
                     commands.entity(entity).despawn();
                 }
                 next_state.set(GamePhase::TitleScreen);
