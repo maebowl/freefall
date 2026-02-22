@@ -23,6 +23,7 @@ pub enum GamePhase {
     Generating,
     Playing,
     Paused,
+    LevelComplete,
     Transitioning,
     Replaying,
 }
@@ -295,7 +296,7 @@ fn checkpoint_collision(
     recorder: Res<ReplayRecorder>,
     mut pending: ResMut<PendingSubmission>,
     game_mode: Res<GameMode>,
-    mut current_level: ResMut<CurrentLevel>,
+    current_level: Res<CurrentLevel>,
 ) {
     let Ok(player) = player_query.single() else {
         return;
@@ -322,12 +323,7 @@ fn checkpoint_collision(
                 }
             }
 
-            // In Levels mode, advance to next level
-            if *game_mode == GameMode::Levels {
-                current_level.advance();
-            }
-
-            next_state.set(GamePhase::Transitioning);
+            next_state.set(GamePhase::LevelComplete);
             return;
         }
     }

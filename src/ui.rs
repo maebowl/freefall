@@ -87,6 +87,12 @@ struct LeaderboardRow(usize);
 #[derive(Component)]
 struct PauseUi;
 
+#[derive(Component)]
+struct LevelCompleteUi;
+
+#[derive(Resource, Default)]
+struct LevelCompleteSelection(usize);
+
 // --- Plugin ---
 
 pub struct UiPlugin;
@@ -100,6 +106,7 @@ impl Plugin for UiPlugin {
             .init_resource::<LevelSelectSelection>()
             .init_resource::<PauseSelection>()
             .init_resource::<TitleSelection>()
+            .init_resource::<LevelCompleteSelection>()
             // Title screen
             .add_systems(OnEnter(GamePhase::TitleScreen), (spawn_title_screen, despawn_marked::<HudUi>, despawn_marked::<LeaderboardUi>, clear_leaderboard_visible))
             .add_systems(OnExit(GamePhase::TitleScreen), despawn_marked::<TitleScreenUi>)
@@ -121,6 +128,13 @@ impl Plugin for UiPlugin {
                 Update,
                 (tick_timer, update_timer_display, check_pause)
                     .run_if(in_state(GamePhase::Playing)),
+            )
+            // Level complete
+            .add_systems(OnEnter(GamePhase::LevelComplete), spawn_level_complete)
+            .add_systems(OnExit(GamePhase::LevelComplete), despawn_marked::<LevelCompleteUi>)
+            .add_systems(
+                Update,
+                level_complete_input.run_if(in_state(GamePhase::LevelComplete)),
             )
             // Pause menu
             .add_systems(OnEnter(GamePhase::Paused), spawn_pause_menu)
@@ -683,6 +697,174 @@ fn rebuild_pause_menu_spawn(commands: &mut Commands, selected: usize, game_mode:
                     }
                 });
         });
+}
+
+// --- Level complete ---
+
+fn spawn_level_complete(
+    mut commands: Commands,
+    mut sel: ResMut<LevelCompleteSelection>,
+    timer: Res<SpeedrunTimer>,
+    game_mode: Res<GameMode>,
+    current_level: Res<CurrentLevel>,
+) {
+    sel.0 = 0;
+    let has_next = *game_mode == GameMode::Levels && current_level.0 + 1 < LEVEL_ORDER.len();
+    rebuild_level_complete_spawn(&mut commands, sel.0, timer.final_time, has_next);
+}
+
+fn level_complete_options(has_next: bool) -> Vec<&'static str> {
+    if has_next {
+        vec!["Next Level", "Restart", "Title Screen"]
+    } else {
+        vec!["Restart", "Title Screen"]
+    }
+}
+
+fn rebuild_level_complete_spawn(
+    commands: &mut Commands,
+    selected: usize,
+    final_time: Option<f32>,
+    has_next: bool,
+) {
+    let time = final_time.unwrap_or(0.0);
+    let minutes = (time / 60.0) as u32;
+    let seconds = time % 60.0;
+    let options = level_complete_options(has_next);
+
+    commands
+        .spawn((
+            LevelCompleteUi,
+            Node {
+                width: Val::Percent(100.0),
+                height: Val::Percent(100.0),
+                justify_content: JustifyContent::Center,
+                align_items: AlignItems::Center,
+                ..default()
+            },
+            BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.6)),
+        ))
+        .with_children(|parent| {
+            parent
+                .spawn((
+                    Node {
+                        flex_direction: FlexDirection::Column,
+                        align_items: AlignItems::Center,
+                        padding: UiRect::all(Val::Px(32.0)),
+                        row_gap: Val::Px(12.0),
+                        ..default()
+                    },
+                    BackgroundColor(Color::srgba(0.08, 0.08, 0.15, 0.95)),
+                ))
+                .with_children(|panel| {
+                    panel.spawn((
+                        Text::new("LEVEL COMPLETE"),
+                        TextFont {
+                            font_size: 36.0,
+                            ..default()
+                        },
+                        TextColor(Color::srgb(0.2, 0.9, 0.3)),
+                    ));
+
+                    panel.spawn((
+                        Text::new(format!("{:02}:{:06.3}", minutes, seconds)),
+                        TextFont {
+                            font_size: 40.0,
+                            ..default()
+                        },
+                        TextColor(Color::WHITE),
+                    ));
+
+                    panel.spawn(Node {
+                        height: Val::Px(8.0),
+                        ..default()
+                    });
+
+                    for (i, label) in options.iter().enumerate() {
+                        let is_selected = i == selected;
+                        let color = if is_selected {
+                            Color::srgb(1.0, 1.0, 0.3)
+                        } else {
+                            Color::srgb(0.8, 0.8, 0.8)
+                        };
+                        let prefix = if is_selected { "> " } else { "  " };
+                        panel.spawn((
+                            Text::new(format!("{}{}", prefix, label)),
+                            TextFont {
+                                font_size: 24.0,
+                                ..default()
+                            },
+                            TextColor(color),
+                        ));
+                    }
+                });
+        });
+}
+
+fn level_complete_input(
+    keys: Res<ButtonInput<KeyCode>>,
+    gamepads: Query<&Gamepad>,
+    mut sel: ResMut<LevelCompleteSelection>,
+    mut next_state: ResMut<NextState<GamePhase>>,
+    mut commands: Commands,
+    existing: Query<Entity, With<LevelCompleteUi>>,
+    level_query: Query<Entity, With<LevelEntity>>,
+    player_query: Query<Entity, With<Player>>,
+    game_mode: Res<GameMode>,
+    mut current_level: ResMut<CurrentLevel>,
+    timer: Res<SpeedrunTimer>,
+) {
+    let gamepad = gamepads.iter().next();
+    let has_next = *game_mode == GameMode::Levels && current_level.0 + 1 < LEVEL_ORDER.len();
+    let options = level_complete_options(has_next);
+    let max_idx = options.len().saturating_sub(1);
+
+    let gp_up = gamepad.is_some_and(|g| g.just_pressed(GamepadButton::DPadUp));
+    let gp_down = gamepad.is_some_and(|g| g.just_pressed(GamepadButton::DPadDown));
+
+    let up = keys.just_pressed(KeyCode::ArrowUp) || keys.just_pressed(KeyCode::KeyW) || gp_up;
+    let down = keys.just_pressed(KeyCode::ArrowDown) || keys.just_pressed(KeyCode::KeyS) || gp_down;
+
+    let mut changed = false;
+    if up && sel.0 > 0 {
+        sel.0 -= 1;
+        changed = true;
+    }
+    if down && sel.0 < max_idx {
+        sel.0 += 1;
+        changed = true;
+    }
+
+    if changed {
+        for entity in &existing {
+            commands.entity(entity).despawn();
+        }
+        rebuild_level_complete_spawn(&mut commands, sel.0, timer.final_time, has_next);
+    }
+
+    let gp_confirm = gamepad.is_some_and(|g| g.just_pressed(GamepadButton::South));
+    if keys.just_pressed(KeyCode::Space) || keys.just_pressed(KeyCode::Enter) || gp_confirm {
+        let label = options[sel.0];
+        match label {
+            "Next Level" => {
+                current_level.advance();
+                next_state.set(GamePhase::Transitioning);
+            }
+            "Restart" => {
+                next_state.set(GamePhase::Transitioning);
+            }
+            "Title Screen" => {
+                for entity in &level_query {
+                    commands.entity(entity).despawn();
+                }
+                for entity in &player_query {
+                    commands.entity(entity).despawn();
+                }
+                next_state.set(GamePhase::TitleScreen);
+            }
+            _ => {}
+        }
+    }
 }
 
 // --- Timer ---
