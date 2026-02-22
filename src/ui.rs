@@ -2,10 +2,10 @@ use bevy::prelude::*;
 
 use crate::ldtk::{CurrentLevel, LEVEL_ORDER};
 use crate::level::{GameMode, GamePhase, LevelEntity};
-use crate::net::{NetStatus, OnlineLeaderboard, PendingReplayFetch, ReplayFetchStatus};
+use crate::net::{NetStatus, OnlineLeaderboard, PendingReplayFetch, PendingSubmission, PlayerName, ReplayFetchStatus};
 use crate::player::Player;
 use crate::replay::{FrameInput, ReplayData};
-use crate::username::ForceNameEntry;
+use crate::username::{self, ForceNameEntry};
 
 // --- Resources ---
 
@@ -109,6 +109,17 @@ struct RainbowText;
 #[derive(Resource, Default)]
 struct LevelCompleteSelection(usize);
 
+#[derive(Resource, Default)]
+struct ScoreNamePrompt {
+    active: bool,
+    buffer: String,
+}
+
+const MAX_NAME_LEN: usize = 16;
+
+#[derive(Resource, Default)]
+pub struct DeferredSubmission(pub Option<crate::net::SubmissionData>);
+
 // --- Plugin ---
 
 pub struct UiPlugin;
@@ -124,6 +135,8 @@ impl Plugin for UiPlugin {
             .init_resource::<TitleSelection>()
             .init_resource::<LevelCompleteSelection>()
             .init_resource::<LastRunTime>()
+            .init_resource::<ScoreNamePrompt>()
+            .init_resource::<DeferredSubmission>()
             // Title screen
             .add_systems(OnEnter(GamePhase::TitleScreen), (spawn_title_screen, despawn_marked::<HudUi>, despawn_marked::<LeaderboardUi>, clear_leaderboard_visible))
             .add_systems(OnExit(GamePhase::TitleScreen), despawn_marked::<TitleScreenUi>)
@@ -730,6 +743,10 @@ fn spawn_level_complete(
     game_mode: Res<GameMode>,
     current_level: Res<CurrentLevel>,
     online_leaderboard: Res<OnlineLeaderboard>,
+    player_name: Option<Res<PlayerName>>,
+    mut name_prompt: ResMut<ScoreNamePrompt>,
+    mut deferred: ResMut<DeferredSubmission>,
+    mut pending: ResMut<PendingSubmission>,
 ) {
     let has_next = *game_mode == GameMode::Levels && current_level.0 + 1 < LEVEL_ORDER.len();
     // Default to "Restart"
@@ -743,7 +760,25 @@ fn spawn_level_complete(
         }
     });
 
-    rebuild_level_complete_spawn(&mut commands, sel.0, timer.final_time, has_next, is_wr);
+    let is_top5 = *game_mode == GameMode::Levels && timer.final_time.is_some_and(|t| {
+        online_leaderboard.entries.len() < 5
+            || t < online_leaderboard.entries.last().map(|e| e.time).unwrap_or(f32::MAX)
+    });
+
+    if is_top5 {
+        let current_name = player_name.map(|n| n.0.clone()).unwrap_or_default();
+        name_prompt.active = true;
+        name_prompt.buffer = current_name;
+    } else {
+        name_prompt.active = false;
+        name_prompt.buffer.clear();
+        // Not top 5 — submit immediately
+        if let Some(data) = deferred.0.take() {
+            pending.0 = Some(data);
+        }
+    }
+
+    rebuild_level_complete_spawn(&mut commands, sel.0, timer.final_time, has_next, is_wr, &name_prompt);
 }
 
 fn level_complete_options(has_next: bool) -> Vec<&'static str> {
@@ -760,11 +795,11 @@ fn rebuild_level_complete_spawn(
     final_time: Option<f32>,
     has_next: bool,
     is_wr: bool,
+    name_prompt: &ScoreNamePrompt,
 ) {
     let time = final_time.unwrap_or(0.0);
     let minutes = (time / 60.0) as u32;
     let seconds = time % 60.0;
-    let options = level_complete_options(has_next);
 
     commands
         .spawn((
@@ -821,27 +856,63 @@ fn rebuild_level_complete_spawn(
                         TextColor(Color::WHITE),
                     ));
 
-                    panel.spawn(Node {
-                        height: Val::Px(8.0),
-                        ..default()
-                    });
-
-                    for (i, label) in options.iter().enumerate() {
-                        let is_selected = i == selected;
-                        let color = if is_selected {
-                            Color::srgb(1.0, 1.0, 0.3)
-                        } else {
-                            Color::srgb(0.8, 0.8, 0.8)
-                        };
-                        let prefix = if is_selected { "> " } else { "  " };
+                    if name_prompt.active {
                         panel.spawn((
-                            Text::new(format!("{}{}", prefix, label)),
+                            Text::new("TOP 5! Enter name:"),
                             TextFont {
                                 font_size: 24.0,
                                 ..default()
                             },
-                            TextColor(color),
+                            TextColor(Color::srgb(1.0, 0.8, 0.3)),
                         ));
+
+                        let display = if name_prompt.buffer.is_empty() {
+                            "_".to_string()
+                        } else {
+                            format!("{}_", name_prompt.buffer)
+                        };
+                        panel.spawn((
+                            Text::new(display),
+                            TextFont {
+                                font_size: 28.0,
+                                ..default()
+                            },
+                            TextColor(Color::WHITE),
+                        ));
+
+                        panel.spawn((
+                            Text::new("A-Z, 0-9, Backspace  |  Enter to confirm"),
+                            TextFont {
+                                font_size: 16.0,
+                                ..default()
+                            },
+                            TextColor(Color::srgb(0.5, 0.5, 0.5)),
+                        ));
+                    } else {
+                        let options = level_complete_options(has_next);
+
+                        panel.spawn(Node {
+                            height: Val::Px(8.0),
+                            ..default()
+                        });
+
+                        for (i, label) in options.iter().enumerate() {
+                            let is_selected = i == selected;
+                            let color = if is_selected {
+                                Color::srgb(1.0, 1.0, 0.3)
+                            } else {
+                                Color::srgb(0.8, 0.8, 0.8)
+                            };
+                            let prefix = if is_selected { "> " } else { "  " };
+                            panel.spawn((
+                                Text::new(format!("{}{}", prefix, label)),
+                                TextFont {
+                                    font_size: 24.0,
+                                    ..default()
+                                },
+                                TextColor(color),
+                            ));
+                        }
                     }
                 });
         });
@@ -859,6 +930,9 @@ fn level_complete_input(
     mut current_level: ResMut<CurrentLevel>,
     timer: Res<SpeedrunTimer>,
     online_leaderboard: Res<OnlineLeaderboard>,
+    mut name_prompt: ResMut<ScoreNamePrompt>,
+    mut deferred: ResMut<DeferredSubmission>,
+    mut pending: ResMut<PendingSubmission>,
 ) {
     let gamepad = gamepads.iter().next();
     let has_next = *game_mode == GameMode::Levels && current_level.0 + 1 < LEVEL_ORDER.len();
@@ -869,6 +943,75 @@ fn level_complete_input(
             t < online_leaderboard.entries[0].time
         }
     });
+
+    // Name entry mode
+    if name_prompt.active {
+        let mut changed = false;
+
+        if keys.just_pressed(KeyCode::Backspace) && !name_prompt.buffer.is_empty() {
+            name_prompt.buffer.pop();
+            changed = true;
+        }
+
+        for key in keys.get_just_pressed() {
+            if name_prompt.buffer.len() >= MAX_NAME_LEN {
+                break;
+            }
+            let ch = match key {
+                KeyCode::KeyA => Some('A'), KeyCode::KeyB => Some('B'),
+                KeyCode::KeyC => Some('C'), KeyCode::KeyD => Some('D'),
+                KeyCode::KeyE => Some('E'), KeyCode::KeyF => Some('F'),
+                KeyCode::KeyG => Some('G'), KeyCode::KeyH => Some('H'),
+                KeyCode::KeyI => Some('I'), KeyCode::KeyJ => Some('J'),
+                KeyCode::KeyK => Some('K'), KeyCode::KeyL => Some('L'),
+                KeyCode::KeyM => Some('M'), KeyCode::KeyN => Some('N'),
+                KeyCode::KeyO => Some('O'), KeyCode::KeyP => Some('P'),
+                KeyCode::KeyQ => Some('Q'), KeyCode::KeyR => Some('R'),
+                KeyCode::KeyS => Some('S'), KeyCode::KeyT => Some('T'),
+                KeyCode::KeyU => Some('U'), KeyCode::KeyV => Some('V'),
+                KeyCode::KeyW => Some('W'), KeyCode::KeyX => Some('X'),
+                KeyCode::KeyY => Some('Y'), KeyCode::KeyZ => Some('Z'),
+                KeyCode::Digit0 => Some('0'), KeyCode::Digit1 => Some('1'),
+                KeyCode::Digit2 => Some('2'), KeyCode::Digit3 => Some('3'),
+                KeyCode::Digit4 => Some('4'), KeyCode::Digit5 => Some('5'),
+                KeyCode::Digit6 => Some('6'), KeyCode::Digit7 => Some('7'),
+                KeyCode::Digit8 => Some('8'), KeyCode::Digit9 => Some('9'),
+                _ => None,
+            };
+            if let Some(c) = ch {
+                name_prompt.buffer.push(c);
+                changed = true;
+            }
+        }
+
+        // Confirm name
+        if keys.just_pressed(KeyCode::Enter) && !name_prompt.buffer.is_empty() {
+            let name = name_prompt.buffer.clone();
+            username::save_name(&name);
+            commands.insert_resource(PlayerName(name));
+            // Submit the deferred score
+            if let Some(data) = deferred.0.take() {
+                pending.0 = Some(data);
+            }
+            name_prompt.active = false;
+            // Rebuild UI to show menu options
+            for entity in &existing {
+                commands.entity(entity).despawn();
+            }
+            rebuild_level_complete_spawn(&mut commands, sel.0, timer.final_time, has_next, is_wr, &name_prompt);
+            return;
+        }
+
+        if changed {
+            for entity in &existing {
+                commands.entity(entity).despawn();
+            }
+            rebuild_level_complete_spawn(&mut commands, sel.0, timer.final_time, has_next, is_wr, &name_prompt);
+        }
+        return;
+    }
+
+    // Normal menu navigation
     let options = level_complete_options(has_next);
     let max_idx = options.len().saturating_sub(1);
 
@@ -892,7 +1035,7 @@ fn level_complete_input(
         for entity in &existing {
             commands.entity(entity).despawn();
         }
-        rebuild_level_complete_spawn(&mut commands, sel.0, timer.final_time, has_next, is_wr);
+        rebuild_level_complete_spawn(&mut commands, sel.0, timer.final_time, has_next, is_wr, &name_prompt);
     }
 
     let gp_confirm = gamepad.is_some_and(|g| g.just_pressed(GamepadButton::South));

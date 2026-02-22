@@ -43,7 +43,7 @@ fn load_saved_name() -> Option<String> {
     parsed.get("name")?.as_str().map(|s| s.to_string())
 }
 
-fn save_name(name: &str) {
+pub fn save_name(name: &str) {
     let path = config_path();
     if let Some(parent) = path.parent() {
         let _ = std::fs::create_dir_all(parent);

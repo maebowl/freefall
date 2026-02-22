@@ -4,11 +4,11 @@ use avian2d::prelude::*;
 use bevy::prelude::*;
 
 use crate::ldtk::{self, CurrentLevel};
-use crate::net::{PendingSubmission, SubmissionData};
+use crate::net::SubmissionData;
 use crate::pieces;
 use crate::player::{spawn_player, Player};
 use crate::replay::ReplayRecorder;
-use crate::ui::{LastRunTime, Leaderboard, SpeedrunTimer};
+use crate::ui::{DeferredSubmission, LastRunTime, Leaderboard, SpeedrunTimer};
 use crate::walls::Wall;
 
 const TILE: f32 = 16.0;
@@ -295,7 +295,7 @@ fn checkpoint_collision(
     mut timer: ResMut<SpeedrunTimer>,
     mut leaderboard: ResMut<Leaderboard>,
     recorder: Res<ReplayRecorder>,
-    mut pending: ResMut<PendingSubmission>,
+    mut deferred: ResMut<DeferredSubmission>,
     game_mode: Res<GameMode>,
     current_level: Res<CurrentLevel>,
     mut last_run: ResMut<LastRunTime>,
@@ -318,7 +318,7 @@ fn checkpoint_collision(
                         recorder.seed,
                         recorder.frames.clone(),
                     );
-                    pending.0 = Some(SubmissionData {
+                    deferred.0 = Some(SubmissionData {
                         time: timer.elapsed,
                         seed: recorder.seed,
                         inputs: recorder.frames.clone(),
