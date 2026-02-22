@@ -901,8 +901,8 @@ fn spawn_level_complete(
         let current_name = player_name.map(|n| n.0.clone()).unwrap_or_default();
         name_prompt.active = true;
         name_prompt.buffer = current_name;
-        kb_cursor.row = 0;
-        kb_cursor.col = 0;
+        kb_cursor.row = 3;
+        kb_cursor.col = 7;
     } else {
         name_prompt.active = false;
         name_prompt.buffer.clear();

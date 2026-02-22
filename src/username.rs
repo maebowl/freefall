@@ -60,8 +60,8 @@ fn check_saved_name(
     mut force: ResMut<ForceNameEntry>,
     mut kb_cursor: ResMut<KeyboardCursor>,
 ) {
-    kb_cursor.row = 0;
-    kb_cursor.col = 0;
+    kb_cursor.row = 3;
+    kb_cursor.col = 7;
     if force.0 {
         // Forced name change — pre-fill with current name
         force.0 = false;
