@@ -1,6 +1,6 @@
 {
 	"identifier": "Level_1",
-	"uniqueIdentifer": "a2b00c70-66b0-11ec-9cd7-cfc05854da53",
+	"uniqueIdentifer": "e41950e0-fa90-11f0-9c43-0d873be7b2be",
 	"x": -1,
 	"y": -1,
 	"width": 640,
@@ -14,75 +14,62 @@
 		"Door.png"
 	],
 	"entities": {
-		"Checkpoint": [
-			{
-				"id": "Checkpoint",
-				"iid": "d4868610-fa90-11f0-9617-8feae9572018",
-				"layer": "Entities",
-				"x": 64,
-				"y": 64,
-				"width": 16,
-				"height": 16,
-				"color": 39387,
-				"customFields" : {}
-			},
-			{
-				"id": "Checkpoint",
-				"iid": "e350fe00-fa90-11f0-9617-0b4262b707ab",
-				"layer": "Entities",
-				"x": 80,
-				"y": 64,
-				"width": 16,
-				"height": 16,
-				"color": 39387,
-				"customFields" : {}
-			},
-			{
-				"id": "Checkpoint",
-				"iid": "e3c347d0-fa90-11f0-9617-cf2c4ff7cae4",
-				"layer": "Entities",
-				"x": 64,
-				"y": 80,
-				"width": 16,
-				"height": 16,
-				"color": 39387,
-				"customFields" : {}
-			},
-			{
-				"id": "Checkpoint",
-				"iid": "e46b2090-fa90-11f0-9617-71819aee2333",
-				"layer": "Entities",
-				"x": 80,
-				"y": 80,
-				"width": 16,
-				"height": 16,
-				"color": 39387,
-				"customFields" : {}
-			}
-		],
-		"Key": [
-			{
-				"id": "Key",
-				"iid": "069cb620-fa90-11f0-9c43-31b56269de31",
-				"layer": "Entities",
-				"x": 512,
-				"y": 80,
-				"width": 16,
-				"height": 16,
-				"color": 12470831,
-				"customFields" : {}
-			}
-		],
 		"PlayerSpawn": [
 			{
 				"id": "PlayerSpawn",
-				"iid": "20d984e0-fa90-11f0-9c43-fb587a287d87",
+				"iid": "3375ef90-fa90-11f0-9c43-9944c6c4a9cd",
 				"layer": "Entities",
 				"x": 112,
 				"y": 576,
 				"width": 16,
 				"height": 16,
 				"color": 6539085,
+				"customFields" : {}
+			}
+		],
+		"Checkpoint": [
+			{
+				"id": "Checkpoint",
+				"iid": "5d519d40-fa90-11f0-9c43-674b7eed586d",
+				"layer": "Entities",
+				"x": 96,
+				"y": 96,
+				"width": 16,
+				"height": 16,
+				"color": 39387,
+				"customFields" : {}
+			},
+			{
+				"id": "Checkpoint",
+				"iid": "5eeadae0-fa90-11f0-9c43-c37c0c1912c1",
+				"layer": "Entities",
+				"x": 112,
+				"y": 96,
+				"width": 16,
+				"height": 16,
+				"color": 39387,
+				"customFields" : {}
+			},
+			{
+				"id": "Checkpoint",
+				"iid": "5f468f70-fa90-11f0-9c43-392001676052",
+				"layer": "Entities",
+				"x": 96,
+				"y": 112,
+				"width": 16,
+				"height": 16,
+				"color": 39387,
+				"customFields" : {}
+			},
+			{
+				"id": "Checkpoint",
+				"iid": "601c7d10-fa90-11f0-9c43-217253dc1a56",
+				"layer": "Entities",
+				"x": 112,
+				"y": 112,
+				"width": 16,
+				"height": 16,
+				"color": 39387,
 				"customFields" : {}
 			}
 		]
