@@ -3,7 +3,7 @@ use std::sync::{mpsc, Mutex};
 use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
 
-use crate::level::GamePhase;
+use crate::level::{GameMode, GamePhase};
 use crate::replay::{FrameInput, ReplayData};
 
 const API_URL: &str = "https://freefall.mabelwallin.com/api";
@@ -36,7 +36,7 @@ pub struct OnlineEntry {
     pub seed: u64,
     pub id: String,
     #[serde(default)]
-    pub level: Option<u32>,
+    pub level: Option<String>,
 }
 
 fn serialize_seed<S: serde::Serializer>(seed: &u64, serializer: S) -> Result<S::Ok, S::Error> {
@@ -57,6 +57,7 @@ pub struct SubmissionData {
     pub time: f32,
     pub seed: u64,
     pub inputs: Vec<FrameInput>,
+    pub level: String,
 }
 
 #[derive(Resource, Default)]
@@ -87,7 +88,7 @@ struct ReplayPayload {
     seed: u64,
     inputs: Vec<FrameInput>,
     #[serde(default)]
-    level: Option<u32>,
+    level: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -121,18 +122,34 @@ impl Plugin for NetPlugin {
     }
 }
 
+// --- Current level name helper ---
+
+pub fn current_level_name(mode: &GameMode) -> Option<&'static str> {
+    match mode {
+        GameMode::Levels => Some("Mosaic_demo"),
+        GameMode::Zen => None,
+    }
+}
+
 // --- Leaderboard fetch ---
 
 fn trigger_fetch_leaderboard(
     mut commands: Commands,
     mut leaderboard: ResMut<OnlineLeaderboard>,
+    game_mode: Res<GameMode>,
 ) {
+    let Some(level) = current_level_name(&game_mode) else {
+        leaderboard.entries.clear();
+        leaderboard.status = NetStatus::Idle;
+        return;
+    };
     leaderboard.status = NetStatus::Fetching;
     let (tx, rx) = mpsc::channel();
     commands.insert_resource(LeaderboardReceiver(Mutex::new(rx)));
 
+    let level = level.to_string();
     std::thread::spawn(move || {
-        let result = fetch_leaderboard_http();
+        let result = fetch_leaderboard_http(&level);
         let _ = tx.send(result);
     });
 }
@@ -142,21 +159,26 @@ fn periodic_refresh(
     mut leaderboard: ResMut<OnlineLeaderboard>,
     mut timer: ResMut<RefreshTimer>,
     time: Res<Time>,
+    game_mode: Res<GameMode>,
 ) {
     timer.0.tick(time.delta());
     if timer.0.just_finished() && leaderboard.status != NetStatus::Fetching {
+        let Some(level) = current_level_name(&game_mode) else {
+            return;
+        };
         leaderboard.status = NetStatus::Fetching;
         let (tx, rx) = mpsc::channel();
         commands.insert_resource(LeaderboardReceiver(Mutex::new(rx)));
+        let level = level.to_string();
         std::thread::spawn(move || {
-            let result = fetch_leaderboard_http();
+            let result = fetch_leaderboard_http(&level);
             let _ = tx.send(result);
         });
     }
 }
 
-fn fetch_leaderboard_http() -> Result<Vec<OnlineEntry>, String> {
-    let url = format!("{API_URL}/leaderboard");
+fn fetch_leaderboard_http(level: &str) -> Result<Vec<OnlineEntry>, String> {
+    let url = format!("{API_URL}/leaderboard?level={level}");
     let body: Vec<OnlineEntry> = ureq::get(&url)
         .call()
         .map_err(|e| e.to_string())?
@@ -207,7 +229,7 @@ fn handle_submit_score(
     commands.insert_resource(SubmitReceiver(Mutex::new(rx)));
 
     std::thread::spawn(move || {
-        let result = submit_score_http(data.time, &name, data.seed, &data.inputs);
+        let result = submit_score_http(data.time, &name, data.seed, &data.inputs, &data.level);
         let _ = tx.send(result);
     });
 }
@@ -217,6 +239,7 @@ fn submit_score_http(
     name: &str,
     seed: u64,
     inputs: &[FrameInput],
+    level: &str,
 ) -> Result<(), String> {
     let url = format!("{API_URL}/leaderboard");
     let body = serde_json::json!({
@@ -224,6 +247,7 @@ fn submit_score_http(
         "name": name,
         "seed": seed.to_string(),
         "inputs": inputs,
+        "level": level,
     });
     let resp: SubmitResponse = ureq::post(&url)
         .send_json(&body)
@@ -243,19 +267,23 @@ fn poll_submit_response(
     mut commands: Commands,
     receiver: Option<Res<SubmitReceiver>>,
     mut leaderboard: ResMut<OnlineLeaderboard>,
+    game_mode: Res<GameMode>,
 ) {
     let Some(receiver) = receiver else { return };
     let rx = receiver.0.lock().unwrap();
     match rx.try_recv() {
         Ok(Ok(())) => {
             // Re-fetch leaderboard after successful submission
-            leaderboard.status = NetStatus::Fetching;
-            let (tx, rx) = mpsc::channel();
-            commands.insert_resource(LeaderboardReceiver(Mutex::new(rx)));
-            std::thread::spawn(move || {
-                let result = fetch_leaderboard_http();
-                let _ = tx.send(result);
-            });
+            if let Some(level) = current_level_name(&game_mode) {
+                leaderboard.status = NetStatus::Fetching;
+                let (tx, rx) = mpsc::channel();
+                commands.insert_resource(LeaderboardReceiver(Mutex::new(rx)));
+                let level = level.to_string();
+                std::thread::spawn(move || {
+                    let result = fetch_leaderboard_http(&level);
+                    let _ = tx.send(result);
+                });
+            }
         }
         Ok(Err(e)) => {
             warn!("Score submission failed: {e}");
@@ -271,21 +299,24 @@ fn handle_fetch_replay(
     mut commands: Commands,
     mut pending: ResMut<PendingReplayFetch>,
     mut status: ResMut<ReplayFetchStatus>,
+    game_mode: Res<GameMode>,
 ) {
     let Some(index) = pending.0.take() else { return };
+    let Some(level) = current_level_name(&game_mode) else { return };
     status.loading = true;
 
     let (tx, rx) = mpsc::channel();
     commands.insert_resource(ReplayReceiver(Mutex::new(rx)));
 
+    let level = level.to_string();
     std::thread::spawn(move || {
-        let result = fetch_replay_http(index);
+        let result = fetch_replay_http(index, &level);
         let _ = tx.send(result);
     });
 }
 
-fn fetch_replay_http(index: usize) -> Result<ReplayPayload, String> {
-    let url = format!("{API_URL}/replay/{index}");
+fn fetch_replay_http(index: usize, level: &str) -> Result<ReplayPayload, String> {
+    let url = format!("{API_URL}/replay/{index}?level={level}");
     let payload: ReplayPayload = ureq::get(&url)
         .call()
         .map_err(|e| e.to_string())?

@@ -290,6 +290,7 @@ fn checkpoint_collision(
     mut leaderboard: ResMut<Leaderboard>,
     recorder: Res<ReplayRecorder>,
     mut pending: ResMut<PendingSubmission>,
+    game_mode: Res<GameMode>,
 ) {
     let Ok(player) = player_query.single() else {
         return;
@@ -297,21 +298,24 @@ fn checkpoint_collision(
 
     for checkpoint in &checkpoint_query {
         if collisions.contains(player, checkpoint) {
-            // Stop timer and record time
+            // Stop timer and record time (only submit in Levels mode)
             if timer.final_time.is_none() {
                 timer.running = false;
                 timer.final_time = Some(timer.elapsed);
-                leaderboard.add_entry(
-                    timer.elapsed,
-                    recorder.seed,
-                    recorder.frames.clone(),
-                );
-                // Submit score to online leaderboard
-                pending.0 = Some(SubmissionData {
-                    time: timer.elapsed,
-                    seed: recorder.seed,
-                    inputs: recorder.frames.clone(),
-                });
+
+                if let Some(level_name) = crate::net::current_level_name(&game_mode) {
+                    leaderboard.add_entry(
+                        timer.elapsed,
+                        recorder.seed,
+                        recorder.frames.clone(),
+                    );
+                    pending.0 = Some(SubmissionData {
+                        time: timer.elapsed,
+                        seed: recorder.seed,
+                        inputs: recorder.frames.clone(),
+                        level: level_name.to_string(),
+                    });
+                }
             }
             next_state.set(GamePhase::Transitioning);
             return;

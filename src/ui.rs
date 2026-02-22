@@ -286,7 +286,13 @@ fn toggle_leaderboard(
     online_leaderboard: Res<OnlineLeaderboard>,
     mut selection: ResMut<LeaderboardSelection>,
     replay_status: Res<ReplayFetchStatus>,
+    game_mode: Res<GameMode>,
 ) {
+    // No leaderboard in Zen mode
+    if *game_mode == GameMode::Zen {
+        return;
+    }
+
     let gp_toggle = gamepads
         .iter()
         .next()

@@ -15,13 +15,15 @@ export default {
 
     try {
       if (request.method === "GET" && path === "/api/leaderboard") {
-        return await getLeaderboard(env, corsHeaders);
+        const level = url.searchParams.get("level") || "default";
+        return await getLeaderboard(env, corsHeaders, level);
       }
 
       const replayMatch = path.match(/^\/api\/replay\/(\d+)$/);
       if (request.method === "GET" && replayMatch) {
         const index = parseInt(replayMatch[1], 10);
-        return await getReplay(env, corsHeaders, index);
+        const level = url.searchParams.get("level") || "default";
+        return await getReplay(env, corsHeaders, index, level);
       }
 
       if (request.method === "POST" && path === "/api/leaderboard") {
@@ -42,14 +44,18 @@ function json(data, status = 200, corsHeaders = {}) {
   });
 }
 
-async function getLeaderboard(env, corsHeaders) {
-  const raw = await env.LEADERBOARD.get("top5");
+function leaderboardKey(level) {
+  return `top5:${level}`;
+}
+
+async function getLeaderboard(env, corsHeaders, level) {
+  const raw = await env.LEADERBOARD.get(leaderboardKey(level));
   const entries = raw ? JSON.parse(raw) : [];
   return json(entries, 200, corsHeaders);
 }
 
-async function getReplay(env, corsHeaders, index) {
-  const raw = await env.LEADERBOARD.get("top5");
+async function getReplay(env, corsHeaders, index, level) {
+  const raw = await env.LEADERBOARD.get(leaderboardKey(level));
   const entries = raw ? JSON.parse(raw) : [];
 
   if (index < 0 || index >= entries.length) {
@@ -72,21 +78,24 @@ async function getReplay(env, corsHeaders, index) {
 
 async function submitScore(env, corsHeaders, request) {
   const body = await request.json();
-  const { time, name, seed, inputs } = body;
+  const { time, name, seed, inputs, level } = body;
 
   if (
     typeof time !== "number" ||
     typeof name !== "string" ||
     !name.trim() ||
     typeof seed !== "string" ||
-    !Array.isArray(inputs)
+    !Array.isArray(inputs) ||
+    typeof level !== "string" ||
+    !level.trim()
   ) {
     return json({ error: "Invalid body" }, 400, corsHeaders);
   }
 
+  const key = leaderboardKey(level.trim());
   const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
-  const raw = await env.LEADERBOARD.get("top5");
+  const raw = await env.LEADERBOARD.get(key);
   const entries = raw ? JSON.parse(raw) : [];
 
   // Check if this score qualifies
@@ -104,8 +113,8 @@ async function submitScore(env, corsHeaders, request) {
     await env.LEADERBOARD.delete(`replay:${e.id}`);
   }
 
-  // Store updated top5 and replay data
-  await env.LEADERBOARD.put("top5", JSON.stringify(entries));
+  // Store updated leaderboard and replay data
+  await env.LEADERBOARD.put(key, JSON.stringify(entries));
   await env.LEADERBOARD.put(`replay:${id}`, JSON.stringify(inputs));
 
   const rank = entries.findIndex((e) => e.id === id) + 1;
