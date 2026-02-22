@@ -243,10 +243,7 @@ pub fn build_ldtk_level(commands: &mut Commands, asset_server: &AssetServer, lev
                 Collider::rectangle(key.width * 1.5, key.height * 1.5),
                 Sensor,
                 RigidBody::Static,
-                Sprite::from_color(
-                    Color::srgb(1.0, 0.85, 0.0),
-                    Vec2::new(key.width, key.height),
-                ),
+                Sprite::from_image(asset_server.load("key.png")),
                 Transform::from_xyz(pos.x, pos.y, 5.0),
             ));
         }
