@@ -5,6 +5,7 @@ use crate::level::{GameMode, GamePhase, LevelEntity, SpawnPoint, ZenRun};
 use crate::net::{NetStatus, OnlineLeaderboard, PendingReplayFetch, PendingSubmission, PlayerName, ReplayFetchStatus};
 use crate::player::Player;
 use crate::replay::{FrameInput, ReplayData};
+use crate::sfx::SfxEvent;
 use crate::username::{self, ForceNameEntry};
 
 // --- Resources ---
@@ -480,6 +481,7 @@ fn title_screen_input(
     existing: Query<Entity, With<TitleScreenUi>>,
     mut exit: MessageWriter<AppExit>,
     mut force_name: ResMut<ForceNameEntry>,
+    mut sfx: EventWriter<SfxEvent>,
 ) {
     let gamepad = gamepads.iter().next();
     let max_idx = TITLE_OPTIONS.len().saturating_sub(1);
@@ -501,6 +503,7 @@ fn title_screen_input(
     }
 
     if changed {
+        sfx.write(SfxEvent::MenuTick);
         for entity in &existing {
             commands.entity(entity).despawn();
         }
@@ -512,6 +515,7 @@ fn title_screen_input(
     });
 
     if keys.just_pressed(KeyCode::Space) || keys.just_pressed(KeyCode::Enter) || gp_confirm {
+        sfx.write(SfxEvent::MenuDing);
         match title_sel.0 {
             0 => {
                 // Levels
@@ -562,6 +566,7 @@ fn level_select_input(
     mut next_state: ResMut<NextState<GamePhase>>,
     mut commands: Commands,
     existing: Query<Entity, With<LevelSelectUi>>,
+    mut sfx: EventWriter<SfxEvent>,
 ) {
     let gamepad = gamepads.iter().next();
     let max_idx = LEVEL_ORDER.len().saturating_sub(1);
@@ -583,6 +588,7 @@ fn level_select_input(
     }
 
     if changed {
+        sfx.write(SfxEvent::MenuTick);
         for entity in &existing {
             commands.entity(entity).despawn();
         }
@@ -591,6 +597,7 @@ fn level_select_input(
 
     let gp_confirm = gamepad.is_some_and(|g| g.just_pressed(GamepadButton::South));
     if keys.just_pressed(KeyCode::Space) || keys.just_pressed(KeyCode::Enter) || gp_confirm {
+        sfx.write(SfxEvent::MenuDing);
         current_level.0 = selection.0;
         next_state.set(GamePhase::Generating);
     }
@@ -717,7 +724,7 @@ fn pause_menu_input(
     online_leaderboard: Res<OnlineLeaderboard>,
     (mut replay_data, mut pending_replay): (ResMut<ReplayData>, ResMut<PendingReplayFetch>),
     replay_status: Res<ReplayFetchStatus>,
-    (mut zen_leaderboard, zen_run): (ResMut<ZenLeaderboard>, Res<ZenRun>),
+    (mut zen_leaderboard, zen_run, mut sfx): (ResMut<ZenLeaderboard>, Res<ZenRun>, EventWriter<SfxEvent>),
 ) {
     let gamepad = gamepads.iter().next();
 
@@ -761,6 +768,7 @@ fn pause_menu_input(
                 changed = true;
             }
             if changed {
+                sfx.write(SfxEvent::MenuTick);
                 for entity in &existing_lb {
                     commands.entity(entity).despawn();
                 }
@@ -770,6 +778,7 @@ fn pause_menu_input(
             // Confirm — start replay
             let gp_confirm = gamepad.is_some_and(|g| g.just_pressed(GamepadButton::South));
             if keys.just_pressed(KeyCode::Space) || keys.just_pressed(KeyCode::Enter) || gp_confirm {
+                sfx.write(SfxEvent::MenuDing);
                 if !replay_status.loading {
                     if use_online {
                         pending_replay.0 = Some(lb_selection.0);
@@ -805,10 +814,12 @@ fn pause_menu_input(
 
     if up && pause_sel.0 > 0 {
         pause_sel.0 -= 1;
+        sfx.write(SfxEvent::MenuTick);
         rebuild_pause_menu(&mut commands, &existing_pause, pause_sel.0, &game_mode);
     }
     if down && pause_sel.0 < max_idx {
         pause_sel.0 += 1;
+        sfx.write(SfxEvent::MenuTick);
         rebuild_pause_menu(&mut commands, &existing_pause, pause_sel.0, &game_mode);
     }
 
@@ -821,6 +832,7 @@ fn pause_menu_input(
 
     let gp_confirm = gamepad.is_some_and(|g| g.just_pressed(GamepadButton::South));
     if keys.just_pressed(KeyCode::Space) || keys.just_pressed(KeyCode::Enter) || gp_confirm {
+        sfx.write(SfxEvent::MenuDing);
         let options = pause_menu_options(&game_mode);
         let label = options[pause_sel.0];
         match label {
@@ -1118,7 +1130,7 @@ fn level_complete_input(
     online_leaderboard: Res<OnlineLeaderboard>,
     mut name_prompt: ResMut<ScoreNamePrompt>,
     mut deferred: ResMut<DeferredSubmission>,
-    mut pending: ResMut<PendingSubmission>,
+    (mut pending, mut sfx): (ResMut<PendingSubmission>, EventWriter<SfxEvent>),
     mut kb_cursor: ResMut<KeyboardCursor>,
 ) {
     let gamepad = gamepads.iter().next();
@@ -1256,6 +1268,7 @@ fn level_complete_input(
     }
 
     if changed {
+        sfx.write(SfxEvent::MenuTick);
         for entity in &existing {
             commands.entity(entity).despawn();
         }
@@ -1264,6 +1277,7 @@ fn level_complete_input(
 
     let gp_confirm = gamepad.is_some_and(|g| g.just_pressed(GamepadButton::South));
     if keys.just_pressed(KeyCode::Space) || keys.just_pressed(KeyCode::Enter) || gp_confirm {
+        sfx.write(SfxEvent::MenuDing);
         let label = options[sel.0];
         match label {
             "Next Level" => {

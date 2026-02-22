@@ -243,6 +243,7 @@ fn player_movement(
     >,
     time: Res<Time>,
     mut recorder: ResMut<ReplayRecorder>,
+    mut sfx: EventWriter<crate::sfx::SfxEvent>,
 ) {
     let Ok((mut velocity, mut gravity_scale, mut state)) = players.single_mut() else {
         return;
@@ -273,6 +274,8 @@ fn player_movement(
         dash_pressed: input.dash_pressed,
     });
 
+    let was_dashing = state.dashing;
+
     apply_movement(
         &input,
         &mut velocity,
@@ -280,6 +283,10 @@ fn player_movement(
         &mut state,
         time.delta_secs(),
     );
+
+    if !was_dashing && state.dashing {
+        sfx.write(crate::sfx::SfxEvent::Dash);
+    }
 }
 
 pub fn apply_movement(

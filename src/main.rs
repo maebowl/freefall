@@ -5,6 +5,7 @@ mod net;
 mod pieces;
 mod player;
 mod replay;
+mod sfx;
 mod ui;
 mod username;
 mod walls;
@@ -37,6 +38,7 @@ fn main() {
             net::NetPlugin,
             username::UsernamePlugin,
             ldtk::LdtkPlugin,
+            sfx::SfxPlugin,
         ))
         .add_systems(Startup, setup)
         .run();
