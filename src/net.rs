@@ -107,8 +107,9 @@ impl Plugin for NetPlugin {
             .init_resource::<ReplayFetchStatus>()
             .init_resource::<PendingSubmission>()
             .init_resource::<PendingReplayFetch>()
-            .insert_resource(RefreshTimer(Timer::from_seconds(30.0, TimerMode::Repeating)))
+            .insert_resource(RefreshTimer(Timer::from_seconds(10.0, TimerMode::Repeating)))
             .add_systems(OnEnter(GamePhase::TitleScreen), trigger_fetch_leaderboard)
+            .add_systems(OnEnter(GamePhase::Generating), trigger_fetch_leaderboard)
             .add_systems(
                 Update,
                 (
