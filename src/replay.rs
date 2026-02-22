@@ -2,7 +2,8 @@ use avian2d::prelude::*;
 use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
 
-use crate::level::{build_level, GamePhase, LevelEntity, SpawnPoint};
+use crate::ldtk::{self, CurrentLevel};
+use crate::level::{build_level, GameMode, GamePhase, LevelEntity, SpawnPoint};
 use crate::player::{apply_movement, detect_ground_and_walls, GhostPlayer, MergedInput, Player, PlayerState};
 
 const OFFSCREEN: f32 = -99999.0;
@@ -69,14 +70,19 @@ fn setup_replay(
     mut spawn_point: ResMut<SpawnPoint>,
     mut players: Query<(&mut Visibility, &mut Transform, &mut LinearVelocity), With<Player>>,
     existing_levels: Query<Entity, With<LevelEntity>>,
+    game_mode: Res<GameMode>,
+    current_level: Res<CurrentLevel>,
 ) {
     // Despawn existing level before building replay level
     for entity in &existing_levels {
         commands.entity(entity).despawn();
     }
 
-    // Regenerate level from saved seed
-    let sp = build_level(&mut commands, replay_data.seed);
+    // Rebuild the correct level type
+    let sp = match *game_mode {
+        GameMode::Levels => ldtk::build_ldtk_level(&mut commands, &asset_server, current_level.name()),
+        GameMode::Zen => build_level(&mut commands, replay_data.seed),
+    };
     spawn_point.0 = sp;
 
     // Hide real player and move offscreen during replay

@@ -386,8 +386,8 @@ pub fn apply_movement(
         gravity_scale.0 = 1.0;
     }
 
-    // Wall slide — cap fall speed when touching a wall
-    if state.wall_dir != 0.0 && velocity.y < -WALL_SLIDE_SPEED {
+    // Wall slide — cap fall speed only when pressing into the wall
+    if state.wall_dir != 0.0 && velocity.y < -WALL_SLIDE_SPEED && move_x.signum() == state.wall_dir.signum() {
         velocity.y = -WALL_SLIDE_SPEED;
     }
 
