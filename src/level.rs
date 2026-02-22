@@ -255,11 +255,12 @@ fn generate_level(
 
 fn reposition_player(
     spawn_point: Res<SpawnPoint>,
-    mut players: Query<(&mut Transform, &mut LinearVelocity), With<Player>>,
+    mut players: Query<(&mut Transform, &mut LinearVelocity, &mut Visibility), With<Player>>,
 ) {
-    for (mut tf, mut vel) in &mut players {
+    for (mut tf, mut vel, mut vis) in &mut players {
         tf.translation = spawn_point.0.extend(0.0);
         vel.0 = Vec2::ZERO;
+        *vis = Visibility::Inherited;
     }
 }
 
@@ -288,7 +289,7 @@ fn regenerate_level(
 
 fn checkpoint_collision(
     collisions: Collisions,
-    player_query: Query<Entity, With<Player>>,
+    mut player_query: Query<(Entity, &mut Visibility), With<Player>>,
     checkpoint_query: Query<Entity, With<Checkpoint>>,
     mut next_state: ResMut<NextState<GamePhase>>,
     mut timer: ResMut<SpeedrunTimer>,
@@ -299,12 +300,13 @@ fn checkpoint_collision(
     current_level: Res<CurrentLevel>,
     mut last_run: ResMut<LastRunTime>,
 ) {
-    let Ok(player) = player_query.single() else {
+    let Ok((player, mut player_vis)) = player_query.single_mut() else {
         return;
     };
 
     for checkpoint in &checkpoint_query {
         if collisions.contains(player, checkpoint) {
+            *player_vis = Visibility::Hidden;
             if timer.final_time.is_none() {
                 timer.running = false;
                 timer.final_time = Some(timer.elapsed);
