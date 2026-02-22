@@ -8,7 +8,7 @@ use crate::net::SubmissionData;
 use crate::pieces;
 use crate::player::{spawn_player, Player};
 use crate::replay::ReplayRecorder;
-use crate::ui::{DeferredSubmission, LastRunTime, Leaderboard, SpeedrunTimer};
+use crate::ui::{DeferredSubmission, LastRunTime, Leaderboard, SpeedrunTimer, ZenLeaderboard};
 use crate::walls::Wall;
 
 const TILE: f32 = 16.0;
@@ -47,6 +47,15 @@ pub struct LevelEntity;
 #[derive(Component)]
 pub struct Checkpoint;
 
+#[derive(Resource, Default)]
+pub struct ZenRun {
+    pub accumulated: f32,
+    pub max_height: f32,
+}
+
+#[derive(Resource, Default)]
+pub struct ZenContinuing(pub bool);
+
 pub struct LevelPlugin;
 
 impl Plugin for LevelPlugin {
@@ -54,6 +63,8 @@ impl Plugin for LevelPlugin {
         app.init_state::<GamePhase>()
             .init_resource::<GameMode>()
             .init_resource::<CurrentLevel>()
+            .init_resource::<ZenRun>()
+            .init_resource::<ZenContinuing>()
             .insert_resource(LevelSeed(0))
             .insert_resource(SpawnPoint(Vec2::ZERO))
             .add_systems(OnEnter(GamePhase::Generating), generate_level)
@@ -222,7 +233,18 @@ fn generate_level(
     mut recorder: ResMut<ReplayRecorder>,
     game_mode: Res<GameMode>,
     current_level: Res<CurrentLevel>,
+    mut zen_run: ResMut<ZenRun>,
+    mut zen_continuing: ResMut<ZenContinuing>,
 ) {
+    if *game_mode == GameMode::Zen {
+        if zen_continuing.0 {
+            zen_continuing.0 = false;
+        } else {
+            zen_run.accumulated = 0.0;
+            zen_run.max_height = 0.0;
+        }
+    }
+
     let sp = match *game_mode {
         GameMode::Levels => {
             let sp = ldtk::build_ldtk_level(&mut commands, &asset_server, current_level.name());
@@ -280,16 +302,22 @@ fn regenerate_level(
     keys: Res<ButtonInput<KeyCode>>,
     gamepads: Query<&Gamepad>,
     mut next_state: ResMut<NextState<GamePhase>>,
+    game_mode: Res<GameMode>,
+    mut zen_leaderboard: ResMut<ZenLeaderboard>,
+    zen_run: Res<ZenRun>,
 ) {
     let gp_regen = gamepads.iter().next().is_some_and(|g| g.just_pressed(GamepadButton::Select));
     if keys.just_pressed(KeyCode::KeyR) || gp_regen {
+        if *game_mode == GameMode::Zen && zen_run.max_height > 0.0 {
+            zen_leaderboard.add_height(zen_run.max_height);
+        }
         next_state.set(GamePhase::Transitioning);
     }
 }
 
 fn checkpoint_collision(
     collisions: Collisions,
-    mut player_query: Query<(Entity, &mut Visibility), With<Player>>,
+    mut player_query: Query<(Entity, &Transform, &mut Visibility), With<Player>>,
     checkpoint_query: Query<Entity, With<Checkpoint>>,
     mut next_state: ResMut<NextState<GamePhase>>,
     mut timer: ResMut<SpeedrunTimer>,
@@ -299,32 +327,43 @@ fn checkpoint_collision(
     game_mode: Res<GameMode>,
     current_level: Res<CurrentLevel>,
     mut last_run: ResMut<LastRunTime>,
+    spawn_point: Res<SpawnPoint>,
+    mut zen_run: ResMut<ZenRun>,
+    mut zen_continuing: ResMut<ZenContinuing>,
 ) {
-    let Ok((player, mut player_vis)) = player_query.single_mut() else {
+    let Ok((player, player_tf, mut player_vis)) = player_query.single_mut() else {
         return;
     };
 
     for checkpoint in &checkpoint_query {
         if collisions.contains(player, checkpoint) {
+            if *game_mode == GameMode::Zen {
+                let height_gained = (player_tf.translation.y - spawn_point.0.y).max(0.0);
+                zen_run.accumulated += height_gained;
+                let current_height = zen_run.accumulated / TILE;
+                zen_run.max_height = zen_run.max_height.max(current_height);
+                zen_continuing.0 = true;
+                next_state.set(GamePhase::Transitioning);
+                return;
+            }
+
             *player_vis = Visibility::Hidden;
             if timer.final_time.is_none() {
                 timer.running = false;
                 timer.final_time = Some(timer.elapsed);
                 last_run.0 = Some(timer.elapsed);
 
-                if *game_mode == GameMode::Levels {
-                    leaderboard.add_entry(
-                        timer.elapsed,
-                        recorder.seed,
-                        recorder.frames.clone(),
-                    );
-                    deferred.0 = Some(SubmissionData {
-                        time: timer.elapsed,
-                        seed: recorder.seed,
-                        inputs: recorder.frames.clone(),
-                        level: current_level.name().to_string(),
-                    });
-                }
+                leaderboard.add_entry(
+                    timer.elapsed,
+                    recorder.seed,
+                    recorder.frames.clone(),
+                );
+                deferred.0 = Some(SubmissionData {
+                    time: timer.elapsed,
+                    seed: recorder.seed,
+                    inputs: recorder.frames.clone(),
+                    level: current_level.name().to_string(),
+                });
             }
 
             next_state.set(GamePhase::LevelComplete);

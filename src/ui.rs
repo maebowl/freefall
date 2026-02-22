@@ -1,7 +1,7 @@
 use bevy::prelude::*;
 
 use crate::ldtk::{CurrentLevel, LEVEL_ORDER};
-use crate::level::{GameMode, GamePhase, LevelEntity};
+use crate::level::{GameMode, GamePhase, LevelEntity, SpawnPoint, ZenRun};
 use crate::net::{NetStatus, OnlineLeaderboard, PendingReplayFetch, PendingSubmission, PlayerName, ReplayFetchStatus};
 use crate::player::Player;
 use crate::replay::{FrameInput, ReplayData};
@@ -119,6 +119,19 @@ const MAX_NAME_LEN: usize = 16;
 
 #[derive(Resource, Default)]
 pub struct DeferredSubmission(pub Option<crate::net::SubmissionData>);
+
+#[derive(Resource, Default)]
+pub struct ZenLeaderboard {
+    pub heights: Vec<f32>,
+}
+
+impl ZenLeaderboard {
+    pub fn add_height(&mut self, height: f32) {
+        self.heights.push(height);
+        self.heights.sort_by(|a, b| b.partial_cmp(a).unwrap());
+        self.heights.truncate(5);
+    }
+}
 
 // --- On-screen keyboard ---
 
@@ -262,6 +275,7 @@ impl Plugin for UiPlugin {
             .init_resource::<ScoreNamePrompt>()
             .init_resource::<DeferredSubmission>()
             .init_resource::<KeyboardCursor>()
+            .init_resource::<ZenLeaderboard>()
             // Title screen
             .add_systems(OnEnter(GamePhase::TitleScreen), (spawn_title_screen, despawn_marked::<HudUi>, despawn_marked::<LeaderboardUi>, clear_leaderboard_visible))
             .add_systems(OnExit(GamePhase::TitleScreen), despawn_marked::<TitleScreenUi>)
@@ -675,6 +689,8 @@ fn pause_menu_input(
     mut replay_data: ResMut<ReplayData>,
     mut pending_replay: ResMut<PendingReplayFetch>,
     replay_status: Res<ReplayFetchStatus>,
+    mut zen_leaderboard: ResMut<ZenLeaderboard>,
+    zen_run: Res<ZenRun>,
 ) {
     let gamepad = gamepads.iter().next();
 
@@ -686,6 +702,18 @@ fn pause_menu_input(
 
     // If leaderboard is open, handle leaderboard navigation
     if leaderboard_visible.visible {
+        // In zen mode, leaderboard is view-only (no selection/replay)
+        if *game_mode == GameMode::Zen {
+            let gp_back = gamepad.is_some_and(|g| g.just_pressed(GamepadButton::East));
+            if keys.just_pressed(KeyCode::Escape) || gp_back {
+                leaderboard_visible.visible = false;
+                for entity in &existing_lb {
+                    commands.entity(entity).despawn();
+                }
+            }
+            return;
+        }
+
         let cached_time = leaderboard_visible.cached_time;
         let use_online = !online_leaderboard.entries.is_empty();
         let entry_count = if use_online {
@@ -709,7 +737,7 @@ fn pause_menu_input(
                 for entity in &existing_lb {
                     commands.entity(entity).despawn();
                 }
-                spawn_leaderboard(&mut commands, &local_leaderboard, &online_leaderboard, lb_selection.0, &replay_status, cached_time);
+                spawn_leaderboard(&mut commands, &local_leaderboard, &online_leaderboard, lb_selection.0, &replay_status, cached_time, &game_mode, &zen_leaderboard);
             }
 
             // Confirm — start replay
@@ -721,7 +749,7 @@ fn pause_menu_input(
                         for entity in &existing_lb {
                             commands.entity(entity).despawn();
                         }
-                        spawn_leaderboard(&mut commands, &local_leaderboard, &online_leaderboard, lb_selection.0, &replay_status, cached_time);
+                        spawn_leaderboard(&mut commands, &local_leaderboard, &online_leaderboard, lb_selection.0, &replay_status, cached_time, &game_mode, &zen_leaderboard);
                     } else {
                         let entry = &local_leaderboard.entries[lb_selection.0];
                         replay_data.frames = entry.inputs.clone();
@@ -775,9 +803,12 @@ fn pause_menu_input(
             "Leaderboard" => {
                 leaderboard_visible.visible = true;
                 lb_selection.0 = 0;
-                spawn_leaderboard(&mut commands, &local_leaderboard, &online_leaderboard, lb_selection.0, &replay_status, leaderboard_visible.cached_time);
+                spawn_leaderboard(&mut commands, &local_leaderboard, &online_leaderboard, lb_selection.0, &replay_status, leaderboard_visible.cached_time, &game_mode, &zen_leaderboard);
             }
             "Title Screen" => {
+                if *game_mode == GameMode::Zen && zen_run.max_height > 0.0 {
+                    zen_leaderboard.add_height(zen_run.max_height);
+                }
                 for entity in &cleanup_query {
                     commands.entity(entity).despawn();
                 }
@@ -791,7 +822,7 @@ fn pause_menu_input(
 fn pause_menu_options(game_mode: &GameMode) -> Vec<&'static str> {
     match game_mode {
         GameMode::Levels => vec!["Resume", "Leaderboard", "Title Screen"],
-        GameMode::Zen => vec!["Resume", "Title Screen"],
+        GameMode::Zen => vec!["Resume", "Leaderboard", "Title Screen"],
     }
 }
 
@@ -1271,13 +1302,31 @@ fn tick_timer(mut timer: ResMut<SpeedrunTimer>, time: Res<Time>) {
 fn update_timer_display(
     timer: Res<SpeedrunTimer>,
     mut query: Query<&mut Text, With<TimerText>>,
+    game_mode: Res<GameMode>,
+    mut zen_run: ResMut<ZenRun>,
+    spawn_point: Res<SpawnPoint>,
+    player_query: Query<&Transform, With<Player>>,
 ) {
-    let elapsed = timer.final_time.unwrap_or(timer.elapsed);
-    let minutes = (elapsed / 60.0) as u32;
-    let seconds = elapsed % 60.0;
-    let text = format!("{:02}:{:06.3}", minutes, seconds);
-    for mut t in &mut query {
-        **t = text.clone();
+    if *game_mode == GameMode::Zen {
+        let player_height = player_query
+            .iter()
+            .next()
+            .map(|tf| (tf.translation.y - spawn_point.0.y).max(0.0))
+            .unwrap_or(0.0);
+        let current_height = (zen_run.accumulated + player_height) / 16.0;
+        zen_run.max_height = zen_run.max_height.max(current_height);
+        let text = format!("{}m", current_height as u32);
+        for mut t in &mut query {
+            **t = text.clone();
+        }
+    } else {
+        let elapsed = timer.final_time.unwrap_or(timer.elapsed);
+        let minutes = (elapsed / 60.0) as u32;
+        let seconds = elapsed % 60.0;
+        let text = format!("{:02}:{:06.3}", minutes, seconds);
+        for mut t in &mut query {
+            **t = text.clone();
+        }
     }
 }
 
@@ -1340,7 +1389,14 @@ fn spawn_leaderboard(
     selected: usize,
     replay_status: &ReplayFetchStatus,
     last_time: Option<f32>,
+    game_mode: &GameMode,
+    zen_leaderboard: &ZenLeaderboard,
 ) {
+    if *game_mode == GameMode::Zen {
+        spawn_zen_leaderboard(commands, zen_leaderboard);
+        return;
+    }
+
     let use_online = !online_leaderboard.entries.is_empty();
 
     // Compute placement for last run among all personal runs
@@ -1545,6 +1601,86 @@ fn spawn_leaderboard(
                             ));
                         });
                     }
+                });
+        });
+}
+
+fn spawn_zen_leaderboard(
+    commands: &mut Commands,
+    zen_leaderboard: &ZenLeaderboard,
+) {
+    commands
+        .spawn((
+            LeaderboardUi,
+            Node {
+                width: Val::Percent(100.0),
+                height: Val::Percent(100.0),
+                justify_content: JustifyContent::Center,
+                align_items: AlignItems::Center,
+                ..default()
+            },
+        ))
+        .with_children(|parent| {
+            parent
+                .spawn((
+                    Node {
+                        flex_direction: FlexDirection::Column,
+                        align_items: AlignItems::Start,
+                        padding: UiRect::all(Val::Px(24.0)),
+                        row_gap: Val::Px(8.0),
+                        ..default()
+                    },
+                    BackgroundColor(Color::srgba(0.05, 0.05, 0.1, 0.9)),
+                ))
+                .with_children(|panel| {
+                    panel.spawn((
+                        Text::new("BEST HEIGHTS"),
+                        TextFont {
+                            font_size: 32.0,
+                            ..default()
+                        },
+                        TextColor(Color::srgb(0.4, 0.7, 1.0)),
+                    ));
+
+                    if zen_leaderboard.heights.is_empty() {
+                        panel.spawn((
+                            Text::new("No heights recorded yet"),
+                            TextFont {
+                                font_size: 20.0,
+                                ..default()
+                            },
+                            TextColor(Color::srgb(0.6, 0.6, 0.6)),
+                        ));
+                    } else {
+                        for (i, height) in zen_leaderboard.heights.iter().enumerate() {
+                            let color = if i == 0 {
+                                Color::srgb(0.2, 0.9, 0.3)
+                            } else {
+                                Color::srgb(0.8, 0.8, 0.8)
+                            };
+                            panel.spawn((
+                                Text::new(format!("  #{}  {}m", i + 1, *height as u32)),
+                                TextFont {
+                                    font_size: 20.0,
+                                    ..default()
+                                },
+                                TextColor(color),
+                            ));
+                        }
+                    }
+
+                    panel.spawn((
+                        Text::new("Esc/B: Back"),
+                        TextFont {
+                            font_size: 16.0,
+                            ..default()
+                        },
+                        TextColor(Color::srgb(0.5, 0.5, 0.5)),
+                        Node {
+                            margin: UiRect::top(Val::Px(16.0)),
+                            ..default()
+                        },
+                    ));
                 });
         });
 }
