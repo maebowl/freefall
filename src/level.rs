@@ -392,14 +392,17 @@ fn zen_generate_ahead(
         .unwrap_or(0.0);
 
     while gen.frontier_y < player_y + ZEN_BUFFER_PX {
-        let piece_name = ldtk::pick_zen_piece(&mut gen.rng, gen.last_exits);
+        let last_exits = gen.last_exits;
+        let piece_name = ldtk::pick_zen_piece(&mut gen.rng, last_exits);
         let (_, exits) = ldtk::parse_zen_sides(piece_name);
+        let level_entity = gen.level_entity;
+        let frontier_y = gen.frontier_y;
         let piece_h = ldtk::spawn_zen_piece(
             &mut commands,
             &asset_server,
-            gen.level_entity,
+            level_entity,
             piece_name,
-            gen.frontier_y,
+            frontier_y,
         );
         gen.frontier_y += piece_h;
         gen.last_exits = exits;
