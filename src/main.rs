@@ -38,26 +38,7 @@ fn main() {
             username::UsernamePlugin,
         ))
         .add_systems(Startup, setup)
-        .add_systems(
-            Update,
-            close_on_escape.run_if(
-                not(in_state(level::GamePhase::Replaying))
-                    .and(not(in_state(level::GamePhase::NameEntry))),
-            ),
-        )
         .run();
-}
-
-fn close_on_escape(
-    mut commands: Commands,
-    keys: Res<ButtonInput<KeyCode>>,
-    windows: Query<Entity, With<Window>>,
-) {
-    if keys.just_pressed(KeyCode::Escape) {
-        for entity in &windows {
-            commands.entity(entity).despawn();
-        }
-    }
 }
 
 fn setup(mut commands: Commands) {

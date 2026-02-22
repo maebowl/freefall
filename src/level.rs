@@ -19,8 +19,10 @@ pub enum GamePhase {
     #[default]
     NameEntry,
     TitleScreen,
+    LevelSelect,
     Generating,
     Playing,
+    Paused,
     Transitioning,
     Replaying,
 }
