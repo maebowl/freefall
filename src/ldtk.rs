@@ -75,12 +75,12 @@ pub fn build_ldtk_level(commands: &mut Commands, asset_server: &AssetServer) -> 
     let center = Vec3::new(LEVEL_PX / 2.0, LEVEL_PX / 2.0, 0.0);
 
     commands.entity(level_entity).with_children(|parent| {
-        // Spawn layer images (Background.png, Walls.png) as sprites
+        // Spawn layer images (Background.png, Walls.png) behind gameplay sprites
         for (i, layer_file) in data.layers.iter().enumerate() {
             let path = format!("levels/Mosaic_demo/{}", layer_file);
             parent.spawn((
                 Sprite::from_image(asset_server.load(&path)),
-                Transform::from_translation(center + Vec3::Z * i as f32),
+                Transform::from_translation(center + Vec3::new(0.0, 0.0, -10.0 + i as f32)),
             ));
         }
 
