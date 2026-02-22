@@ -93,6 +93,9 @@ struct PauseUi;
 #[derive(Component)]
 struct LevelCompleteUi;
 
+#[derive(Component)]
+struct RainbowText;
+
 #[derive(Resource, Default)]
 struct LevelCompleteSelection(usize);
 
@@ -129,9 +132,10 @@ impl Plugin for UiPlugin {
             .add_systems(OnEnter(GamePhase::Generating), reset_timer)
             .add_systems(
                 Update,
-                (tick_timer, update_timer_display, check_pause)
+                (start_timer_on_input, tick_timer, update_timer_display, check_pause)
                     .run_if(in_state(GamePhase::Playing)),
             )
+            .add_systems(Update, animate_rainbow)
             // Level complete
             .add_systems(OnEnter(GamePhase::LevelComplete), spawn_level_complete)
             .add_systems(OnExit(GamePhase::LevelComplete), despawn_marked::<LevelCompleteUi>)
@@ -708,10 +712,20 @@ fn spawn_level_complete(
     timer: Res<SpeedrunTimer>,
     game_mode: Res<GameMode>,
     current_level: Res<CurrentLevel>,
+    online_leaderboard: Res<OnlineLeaderboard>,
 ) {
     sel.0 = 0;
     let has_next = *game_mode == GameMode::Levels && current_level.0 + 1 < LEVEL_ORDER.len();
-    rebuild_level_complete_spawn(&mut commands, sel.0, timer.final_time, has_next);
+
+    let is_wr = timer.final_time.is_some_and(|t| {
+        if online_leaderboard.entries.is_empty() {
+            true
+        } else {
+            t < online_leaderboard.entries[0].time
+        }
+    });
+
+    rebuild_level_complete_spawn(&mut commands, sel.0, timer.final_time, has_next, is_wr);
 }
 
 fn level_complete_options(has_next: bool) -> Vec<&'static str> {
@@ -727,6 +741,7 @@ fn rebuild_level_complete_spawn(
     selected: usize,
     final_time: Option<f32>,
     has_next: bool,
+    is_wr: bool,
 ) {
     let time = final_time.unwrap_or(0.0);
     let minutes = (time / 60.0) as u32;
@@ -766,6 +781,18 @@ fn rebuild_level_complete_spawn(
                         },
                         TextColor(Color::srgb(0.2, 0.9, 0.3)),
                     ));
+
+                    if is_wr {
+                        panel.spawn((
+                            RainbowText,
+                            Text::new("WORLD RECORD"),
+                            TextFont {
+                                font_size: 32.0,
+                                ..default()
+                            },
+                            TextColor(Color::WHITE),
+                        ));
+                    }
 
                     panel.spawn((
                         Text::new(format!("{:02}:{:06.3}", minutes, seconds)),
@@ -813,9 +840,17 @@ fn level_complete_input(
     game_mode: Res<GameMode>,
     mut current_level: ResMut<CurrentLevel>,
     timer: Res<SpeedrunTimer>,
+    online_leaderboard: Res<OnlineLeaderboard>,
 ) {
     let gamepad = gamepads.iter().next();
     let has_next = *game_mode == GameMode::Levels && current_level.0 + 1 < LEVEL_ORDER.len();
+    let is_wr = timer.final_time.is_some_and(|t| {
+        if online_leaderboard.entries.is_empty() {
+            true
+        } else {
+            t < online_leaderboard.entries[0].time
+        }
+    });
     let options = level_complete_options(has_next);
     let max_idx = options.len().saturating_sub(1);
 
@@ -839,7 +874,7 @@ fn level_complete_input(
         for entity in &existing {
             commands.entity(entity).despawn();
         }
-        rebuild_level_complete_spawn(&mut commands, sel.0, timer.final_time, has_next);
+        rebuild_level_complete_spawn(&mut commands, sel.0, timer.final_time, has_next, is_wr);
     }
 
     let gp_confirm = gamepad.is_some_and(|g| g.just_pressed(GamepadButton::South));
@@ -868,8 +903,36 @@ fn level_complete_input(
 
 fn reset_timer(mut timer: ResMut<SpeedrunTimer>) {
     timer.elapsed = 0.0;
-    timer.running = true;
+    timer.running = false;
     timer.final_time = None;
+}
+
+fn start_timer_on_input(
+    keys: Res<ButtonInput<KeyCode>>,
+    gamepads: Query<&Gamepad>,
+    mut timer: ResMut<SpeedrunTimer>,
+) {
+    if timer.running || timer.final_time.is_some() {
+        return;
+    }
+
+    let gamepad = gamepads.iter().next();
+    let stick = gamepad.map(|g| g.left_stick()).unwrap_or(Vec2::ZERO);
+    let has_stick = stick.x.abs() > 0.1 || stick.y.abs() > 0.1;
+    let has_gp_button = gamepad.is_some_and(|g| {
+        g.just_pressed(GamepadButton::South)
+            || g.just_pressed(GamepadButton::LeftTrigger2)
+    });
+
+    let has_key = keys.any_pressed([
+        KeyCode::ArrowLeft, KeyCode::ArrowRight, KeyCode::ArrowUp, KeyCode::ArrowDown,
+        KeyCode::KeyA, KeyCode::KeyD, KeyCode::KeyW, KeyCode::KeyS,
+        KeyCode::Space, KeyCode::KeyE,
+    ]);
+
+    if has_stick || has_gp_button || has_key {
+        timer.running = true;
+    }
 }
 
 fn tick_timer(mut timer: ResMut<SpeedrunTimer>, time: Res<Time>) {
@@ -924,6 +987,21 @@ fn spawn_hud(mut commands: Commands) {
                 TextColor(Color::srgba(1.0, 1.0, 1.0, 0.8)),
             ));
         });
+}
+
+// --- Rainbow ---
+
+fn animate_rainbow(
+    time: Res<Time>,
+    mut query: Query<&mut TextColor, With<RainbowText>>,
+) {
+    let t = time.elapsed_secs() * 2.0;
+    let r = (t.sin() * 0.5 + 0.5).clamp(0.0, 1.0);
+    let g = ((t + 2.094).sin() * 0.5 + 0.5).clamp(0.0, 1.0);
+    let b = ((t + 4.189).sin() * 0.5 + 0.5).clamp(0.0, 1.0);
+    for mut color in &mut query {
+        color.0 = Color::srgb(r, g, b);
+    }
 }
 
 // --- Leaderboard ---
