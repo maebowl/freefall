@@ -1,4 +1,5 @@
 mod camera;
+mod ldtk;
 mod level;
 mod net;
 mod pieces;

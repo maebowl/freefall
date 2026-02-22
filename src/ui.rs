@@ -1,6 +1,6 @@
 use bevy::prelude::*;
 
-use crate::level::GamePhase;
+use crate::level::{GameMode, GamePhase};
 use crate::net::{NetStatus, OnlineLeaderboard, PendingReplayFetch, ReplayFetchStatus};
 use crate::replay::{FrameInput, ReplayData};
 
@@ -138,14 +138,24 @@ fn spawn_title_screen(mut commands: Commands) {
                 TextColor(Color::WHITE),
             ));
 
-            // Start prompt
+            // Mode selection
             parent.spawn((
-                Text::new("Press Space or A to Start"),
+                Text::new("1: Levels       2: Zen Mode"),
                 TextFont {
-                    font_size: 24.0,
+                    font_size: 28.0,
                     ..default()
                 },
-                TextColor(Color::srgb(0.7, 0.7, 0.7)),
+                TextColor(Color::srgb(0.9, 0.8, 0.3)),
+            ));
+
+            // Start prompt
+            parent.spawn((
+                Text::new("Press Space or A for Levels"),
+                TextFont {
+                    font_size: 20.0,
+                    ..default()
+                },
+                TextColor(Color::srgb(0.6, 0.6, 0.6)),
             ));
 
             // Controls section
@@ -196,11 +206,17 @@ fn title_screen_input(
     keys: Res<ButtonInput<KeyCode>>,
     gamepads: Query<&Gamepad>,
     mut next_state: ResMut<NextState<GamePhase>>,
+    mut game_mode: ResMut<GameMode>,
 ) {
     let gp_start = gamepads.iter().next().is_some_and(|g| {
         g.just_pressed(GamepadButton::South) || g.just_pressed(GamepadButton::Start)
     });
-    if keys.just_pressed(KeyCode::Space) || keys.just_pressed(KeyCode::Enter) || gp_start {
+
+    if keys.just_pressed(KeyCode::Digit1) || keys.just_pressed(KeyCode::Space) || keys.just_pressed(KeyCode::Enter) || gp_start {
+        *game_mode = GameMode::Levels;
+        next_state.set(GamePhase::Generating);
+    } else if keys.just_pressed(KeyCode::Digit2) {
+        *game_mode = GameMode::Zen;
         next_state.set(GamePhase::Generating);
     }
 }

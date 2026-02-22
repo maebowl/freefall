@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use avian2d::prelude::*;
 use bevy::prelude::*;
 
+use crate::ldtk;
 use crate::net::{PendingSubmission, SubmissionData};
 use crate::pieces;
 use crate::player::{spawn_player, Player};
@@ -24,6 +25,13 @@ pub enum GamePhase {
     Replaying,
 }
 
+#[derive(Debug, Clone, Copy, Default, Eq, PartialEq, Hash, Resource)]
+pub enum GameMode {
+    Levels,
+    #[default]
+    Zen,
+}
+
 #[derive(Resource)]
 pub struct LevelSeed(pub u64);
 
@@ -41,6 +49,7 @@ pub struct LevelPlugin;
 impl Plugin for LevelPlugin {
     fn build(&self, app: &mut App) {
         app.init_state::<GamePhase>()
+            .init_resource::<GameMode>()
             .insert_resource(LevelSeed(0))
             .insert_resource(SpawnPoint(Vec2::ZERO))
             .add_systems(OnEnter(GamePhase::Generating), generate_level)
@@ -65,14 +74,14 @@ struct Plate {
     right: i32,
 }
 
-struct WallRect {
-    left: i32,
-    right: i32,
-    top: i32,
-    bottom: i32,
+pub struct WallRect {
+    pub left: i32,
+    pub right: i32,
+    pub top: i32,
+    pub bottom: i32,
 }
 
-fn merge_grid_to_rects(grid: &[Vec<bool>]) -> Vec<WallRect> {
+pub fn merge_grid_to_rects(grid: &[Vec<bool>]) -> Vec<WallRect> {
     let height = grid.len() as i32;
     let width = if height > 0 { grid[0].len() as i32 } else { return vec![] };
 
@@ -207,20 +216,29 @@ fn generate_level(
     player_query: Query<Entity, With<Player>>,
     mut level_seed: ResMut<LevelSeed>,
     mut recorder: ResMut<ReplayRecorder>,
+    game_mode: Res<GameMode>,
 ) {
-    // Generate a new random seed
-    let seed = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_nanos() as u64;
-    level_seed.0 = seed;
+    let sp = match *game_mode {
+        GameMode::Levels => {
+            let sp = ldtk::build_ldtk_level(&mut commands);
+            level_seed.0 = 0;
+            sp
+        }
+        GameMode::Zen => {
+            let seed = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_nanos() as u64;
+            level_seed.0 = seed;
+            build_level(&mut commands, seed)
+        }
+    };
 
-    let sp = build_level(&mut commands, seed);
     spawn_point.0 = sp;
 
     // Reset recorder for this run
     recorder.frames.clear();
-    recorder.seed = seed;
+    recorder.seed = level_seed.0;
 
     // Spawn player on first level
     if player_query.is_empty() {

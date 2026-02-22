@@ -35,6 +35,8 @@ pub struct OnlineEntry {
     #[serde(deserialize_with = "deserialize_seed", serialize_with = "serialize_seed")]
     pub seed: u64,
     pub id: String,
+    #[serde(default)]
+    pub level: Option<u32>,
 }
 
 fn serialize_seed<S: serde::Serializer>(seed: &u64, serializer: S) -> Result<S::Ok, S::Error> {
@@ -84,6 +86,8 @@ struct ReplayPayload {
     #[serde(deserialize_with = "deserialize_seed")]
     seed: u64,
     inputs: Vec<FrameInput>,
+    #[serde(default)]
+    level: Option<u32>,
 }
 
 #[derive(Deserialize)]
