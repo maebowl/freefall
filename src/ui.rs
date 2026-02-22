@@ -35,10 +35,16 @@ pub struct LeaderboardEntry {
 #[derive(Resource, Default)]
 pub struct Leaderboard {
     pub entries: Vec<LeaderboardEntry>,
+    pub all_times: Vec<f32>,
 }
 
 impl Leaderboard {
     pub fn add_entry(&mut self, time: f32, seed: u64, inputs: Vec<FrameInput>) {
+        // Track all times for placement calculation
+        let insert_pos = self.all_times.partition_point(|&t| t < time);
+        self.all_times.insert(insert_pos, time);
+
+        // Only store replay data for top 5
         self.entries.push(LeaderboardEntry {
             time,
             seed,
@@ -1022,13 +1028,14 @@ fn spawn_leaderboard(
 
     // Compute placement for last run
     let placement = last_time.map(|t| {
-        let times: Vec<f32> = if use_online {
-            online_leaderboard.entries.iter().map(|e| e.time).collect()
+        if use_online {
+            let times: Vec<f32> = online_leaderboard.entries.iter().map(|e| e.time).collect();
+            let pos = times.iter().position(|&lt| t <= lt).unwrap_or(times.len());
+            pos + 1
         } else {
-            local_leaderboard.entries.iter().map(|e| e.time).collect()
-        };
-        let pos = times.iter().position(|&lt| t <= lt).unwrap_or(times.len());
-        pos + 1
+            let pos = local_leaderboard.all_times.partition_point(|&lt| lt < t);
+            pos + 1
+        }
     });
 
     commands
