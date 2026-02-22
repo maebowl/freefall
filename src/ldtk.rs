@@ -61,13 +61,13 @@ struct EntityEntry {
 
 fn level_data(name: &str) -> (&'static str, &'static str) {
     match name {
-        "Mosaic_demo" => (
-            include_str!("../assets/levels/Mosaic_demo/data.json"),
-            include_str!("../assets/levels/Mosaic_demo/Walls.csv"),
+        "Level_1" => (
+            include_str!("../assets/levels/Level_1/data.json"),
+            include_str!("../assets/levels/Level_1/Walls.csv"),
         ),
-        "World_Level_1" => (
-            include_str!("../assets/levels/World_Level_1/data.json"),
-            include_str!("../assets/levels/World_Level_1/Walls.csv"),
+        "Level_2" => (
+            include_str!("../assets/levels/Level_2/data.json"),
+            include_str!("../assets/levels/Level_2/Walls.csv"),
         ),
         _ => panic!("Unknown level: {name}"),
     }
