@@ -324,7 +324,7 @@ fn title_screen_input(
             }
             2 => {
                 // Quit
-                exit.send(AppExit::Success);
+                exit.write(AppExit::Success);
             }
             _ => {}
         }
@@ -332,7 +332,7 @@ fn title_screen_input(
 
     // Escape quits from title screen
     if keys.just_pressed(KeyCode::Escape) {
-        exit.send(AppExit::Success);
+        exit.write(AppExit::Success);
     }
 }
 
