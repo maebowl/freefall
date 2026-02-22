@@ -145,7 +145,7 @@ impl Plugin for UiPlugin {
                 title_screen_input.run_if(in_state(GamePhase::TitleScreen)),
             )
             // Level select
-            .add_systems(OnEnter(GamePhase::LevelSelect), spawn_level_select)
+            .add_systems(OnEnter(GamePhase::LevelSelect), (spawn_level_select, reset_local_leaderboard))
             .add_systems(OnExit(GamePhase::LevelSelect), despawn_marked::<LevelSelectUi>)
             .add_systems(
                 Update,
@@ -187,6 +187,12 @@ fn despawn_marked<T: Component>(mut commands: Commands, query: Query<Entity, Wit
 
 fn clear_leaderboard_visible(mut visible: ResMut<LeaderboardVisible>) {
     visible.visible = false;
+}
+
+fn reset_local_leaderboard(mut leaderboard: ResMut<Leaderboard>, mut last_run: ResMut<LastRunTime>) {
+    leaderboard.entries.clear();
+    leaderboard.all_times.clear();
+    last_run.0 = None;
 }
 
 // --- Title screen ---
