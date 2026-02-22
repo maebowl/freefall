@@ -1,6 +1,6 @@
 {
-	"identifier": "Mosaic_demo",
-	"uniqueIdentifer": "a2b00c70-66b0-11ec-9cd7-cfc05854da53",
+	"identifier": "Level_2",
+	"uniqueIdentifer": "417eaab0-fa90-11f0-9c43-813d23f0b59d",
 	"x": -1,
 	"y": -1,
 	"width": 640,
@@ -16,10 +16,10 @@
 		"Checkpoint": [
 			{
 				"id": "Checkpoint",
-				"iid": "d4868610-fa90-11f0-9617-8feae9572018",
+				"iid": "a81893c0-fa90-11f0-9c43-07a19a64e623",
 				"layer": "Entities",
-				"x": 64,
-				"y": 64,
+				"x": 528,
+				"y": 176,
 				"width": 16,
 				"height": 16,
 				"color": 39387,
@@ -27,10 +27,10 @@
 			},
 			{
 				"id": "Checkpoint",
-				"iid": "e350fe00-fa90-11f0-9617-0b4262b707ab",
+				"iid": "b47da470-fa90-11f0-9c43-6b3b8caa803f",
 				"layer": "Entities",
-				"x": 80,
-				"y": 64,
+				"x": 512,
+				"y": 176,
 				"width": 16,
 				"height": 16,
 				"color": 39387,
@@ -38,10 +38,10 @@
 			},
 			{
 				"id": "Checkpoint",
-				"iid": "e3c347d0-fa90-11f0-9617-cf2c4ff7cae4",
+				"iid": "b4e0d310-fa90-11f0-9c43-d36fdf3c109b",
 				"layer": "Entities",
-				"x": 64,
-				"y": 80,
+				"x": 512,
+				"y": 160,
 				"width": 16,
 				"height": 16,
 				"color": 39387,
@@ -49,26 +49,13 @@
 			},
 			{
 				"id": "Checkpoint",
-				"iid": "e46b2090-fa90-11f0-9617-71819aee2333",
+				"iid": "b55ae510-fa90-11f0-9c43-b529adb21f1f",
 				"layer": "Entities",
-				"x": 80,
-				"y": 80,
+				"x": 528,
+				"y": 160,
 				"width": 16,
 				"height": 16,
 				"color": 39387,
-				"customFields" : {}
-			}
-		],
-		"PlayerSpawn": [
-			{
-				"id": "PlayerSpawn",
-				"iid": "5332c420-fa90-11f0-9617-17f140a35e97",
-				"layer": "Entities",
-				"x": 192,
-				"y": 608,
-				"width": 16,
-				"height": 16,
-				"color": 6539085,
 				"customFields" : {}
 			}
 		]

@@ -8,7 +8,7 @@ use crate::walls::Wall;
 const TILE: f32 = 16.0;
 const LEVEL_PX: f32 = 640.0;
 
-pub const LEVEL_ORDER: &[&str] = &["Mosaic_demo", "World_Level_1"];
+pub const LEVEL_ORDER: &[&str] = &["Level_1", "Level_2"];
 
 #[derive(Resource)]
 pub struct CurrentLevel(pub usize);
