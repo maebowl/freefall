@@ -61,6 +61,9 @@ struct LevelSelectSelection(usize);
 #[derive(Resource, Default)]
 struct PauseSelection(usize);
 
+#[derive(Resource, Default)]
+struct TitleSelection(usize);
+
 // --- Components ---
 
 #[derive(Component)]
@@ -96,6 +99,7 @@ impl Plugin for UiPlugin {
             .init_resource::<LeaderboardSelection>()
             .init_resource::<LevelSelectSelection>()
             .init_resource::<PauseSelection>()
+            .init_resource::<TitleSelection>()
             // Title screen
             .add_systems(OnEnter(GamePhase::TitleScreen), (spawn_title_screen, despawn_marked::<HudUi>, despawn_marked::<LeaderboardUi>, clear_leaderboard_visible))
             .add_systems(OnExit(GamePhase::TitleScreen), despawn_marked::<TitleScreenUi>)
@@ -115,12 +119,12 @@ impl Plugin for UiPlugin {
             .add_systems(OnEnter(GamePhase::Generating), reset_timer)
             .add_systems(
                 Update,
-                (tick_timer, update_timer_display, toggle_leaderboard, navigate_leaderboard, check_pause)
+                (tick_timer, update_timer_display, check_pause)
                     .run_if(in_state(GamePhase::Playing)),
             )
             // Pause menu
             .add_systems(OnEnter(GamePhase::Paused), spawn_pause_menu)
-            .add_systems(OnExit(GamePhase::Paused), despawn_marked::<PauseUi>)
+            .add_systems(OnExit(GamePhase::Paused), (despawn_marked::<PauseUi>, despawn_marked::<LeaderboardUi>, clear_leaderboard_visible))
             .add_systems(
                 Update,
                 pause_menu_input.run_if(in_state(GamePhase::Paused)),
@@ -142,7 +146,14 @@ fn clear_leaderboard_visible(mut visible: ResMut<LeaderboardVisible>) {
 
 // --- Title screen ---
 
-fn spawn_title_screen(mut commands: Commands) {
+const TITLE_OPTIONS: &[&str] = &["Levels", "Zen Mode", "Quit"];
+
+fn spawn_title_screen(mut commands: Commands, mut title_sel: ResMut<TitleSelection>) {
+    title_sel.0 = 0;
+    rebuild_title_screen(&mut commands, title_sel.0);
+}
+
+fn rebuild_title_screen(commands: &mut Commands, selected: usize) {
     commands
         .spawn((
             TitleScreenUi,
@@ -167,24 +178,36 @@ fn spawn_title_screen(mut commands: Commands) {
                 TextColor(Color::WHITE),
             ));
 
-            parent.spawn((
-                Text::new("1: Levels       2: Zen Mode"),
-                TextFont {
-                    font_size: 28.0,
+            // Menu options
+            parent
+                .spawn(Node {
+                    flex_direction: FlexDirection::Column,
+                    align_items: AlignItems::Start,
+                    row_gap: Val::Px(8.0),
+                    margin: UiRect::top(Val::Px(16.0)),
                     ..default()
-                },
-                TextColor(Color::srgb(0.9, 0.8, 0.3)),
-            ));
+                })
+                .with_children(|menu| {
+                    for (i, label) in TITLE_OPTIONS.iter().enumerate() {
+                        let is_selected = i == selected;
+                        let color = if is_selected {
+                            Color::srgb(1.0, 1.0, 0.3)
+                        } else {
+                            Color::srgb(0.8, 0.8, 0.8)
+                        };
+                        let prefix = if is_selected { "> " } else { "  " };
+                        menu.spawn((
+                            Text::new(format!("{}{}", prefix, label)),
+                            TextFont {
+                                font_size: 28.0,
+                                ..default()
+                            },
+                            TextColor(color),
+                        ));
+                    }
+                });
 
-            parent.spawn((
-                Text::new("Press Space or A for Levels"),
-                TextFont {
-                    font_size: 20.0,
-                    ..default()
-                },
-                TextColor(Color::srgb(0.6, 0.6, 0.6)),
-            ));
-
+            // Controls section
             parent
                 .spawn(Node {
                     flex_direction: FlexDirection::Column,
@@ -210,7 +233,6 @@ fn spawn_title_screen(mut commands: Commands) {
                         "Sprint        Shift or RT",
                         "Wall Jump     Jump while on wall",
                         "Pause         Escape or Start",
-                        "Leaderboard   L or Menu",
                     ];
 
                     for line in &controls {
@@ -234,19 +256,66 @@ fn title_screen_input(
     mut game_mode: ResMut<GameMode>,
     mut current_level: ResMut<CurrentLevel>,
     mut level_sel: ResMut<LevelSelectSelection>,
+    mut title_sel: ResMut<TitleSelection>,
+    mut commands: Commands,
+    existing: Query<Entity, With<TitleScreenUi>>,
+    mut exit: EventWriter<AppExit>,
 ) {
-    let gp_start = gamepads.iter().next().is_some_and(|g| {
+    let gamepad = gamepads.iter().next();
+    let max_idx = TITLE_OPTIONS.len().saturating_sub(1);
+
+    let gp_up = gamepad.is_some_and(|g| g.just_pressed(GamepadButton::DPadUp));
+    let gp_down = gamepad.is_some_and(|g| g.just_pressed(GamepadButton::DPadDown));
+
+    let up = keys.just_pressed(KeyCode::ArrowUp) || keys.just_pressed(KeyCode::KeyW) || gp_up;
+    let down = keys.just_pressed(KeyCode::ArrowDown) || keys.just_pressed(KeyCode::KeyS) || gp_down;
+
+    let mut changed = false;
+    if up && title_sel.0 > 0 {
+        title_sel.0 -= 1;
+        changed = true;
+    }
+    if down && title_sel.0 < max_idx {
+        title_sel.0 += 1;
+        changed = true;
+    }
+
+    if changed {
+        for entity in &existing {
+            commands.entity(entity).despawn();
+        }
+        rebuild_title_screen(&mut commands, title_sel.0);
+    }
+
+    let gp_confirm = gamepad.is_some_and(|g| {
         g.just_pressed(GamepadButton::South) || g.just_pressed(GamepadButton::Start)
     });
 
-    if keys.just_pressed(KeyCode::Digit1) || keys.just_pressed(KeyCode::Space) || keys.just_pressed(KeyCode::Enter) || gp_start {
-        *game_mode = GameMode::Levels;
-        level_sel.0 = 0;
-        next_state.set(GamePhase::LevelSelect);
-    } else if keys.just_pressed(KeyCode::Digit2) {
-        *game_mode = GameMode::Zen;
-        current_level.0 = 0;
-        next_state.set(GamePhase::Generating);
+    if keys.just_pressed(KeyCode::Space) || keys.just_pressed(KeyCode::Enter) || gp_confirm {
+        match title_sel.0 {
+            0 => {
+                // Levels
+                *game_mode = GameMode::Levels;
+                level_sel.0 = 0;
+                next_state.set(GamePhase::LevelSelect);
+            }
+            1 => {
+                // Zen Mode
+                *game_mode = GameMode::Zen;
+                current_level.0 = 0;
+                next_state.set(GamePhase::Generating);
+            }
+            2 => {
+                // Quit
+                exit.write(AppExit::Success);
+            }
+            _ => {}
+        }
+    }
+
+    // Escape quits from title screen
+    if keys.just_pressed(KeyCode::Escape) {
+        exit.write(AppExit::Success);
     }
 }
 
@@ -384,13 +453,7 @@ fn check_pause(
     keys: Res<ButtonInput<KeyCode>>,
     gamepads: Query<&Gamepad>,
     mut next_state: ResMut<NextState<GamePhase>>,
-    leaderboard_visible: Res<LeaderboardVisible>,
 ) {
-    // Don't pause if leaderboard is open
-    if leaderboard_visible.0 {
-        return;
-    }
-
     let gp_pause = gamepads
         .iter()
         .next()
@@ -400,63 +463,15 @@ fn check_pause(
     }
 }
 
-fn spawn_pause_menu(mut commands: Commands, mut pause_sel: ResMut<PauseSelection>) {
+fn spawn_pause_menu(
+    mut commands: Commands,
+    mut pause_sel: ResMut<PauseSelection>,
+    game_mode: Res<GameMode>,
+    mut leaderboard_visible: ResMut<LeaderboardVisible>,
+) {
     pause_sel.0 = 0;
-
-    commands
-        .spawn((
-            PauseUi,
-            Node {
-                width: Val::Percent(100.0),
-                height: Val::Percent(100.0),
-                justify_content: JustifyContent::Center,
-                align_items: AlignItems::Center,
-                ..default()
-            },
-            BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.6)),
-        ))
-        .with_children(|parent| {
-            parent
-                .spawn((
-                    Node {
-                        flex_direction: FlexDirection::Column,
-                        align_items: AlignItems::Start,
-                        padding: UiRect::all(Val::Px(32.0)),
-                        row_gap: Val::Px(12.0),
-                        ..default()
-                    },
-                    BackgroundColor(Color::srgba(0.08, 0.08, 0.15, 0.95)),
-                ))
-                .with_children(|panel| {
-                    panel.spawn((
-                        Text::new("PAUSED"),
-                        TextFont {
-                            font_size: 36.0,
-                            ..default()
-                        },
-                        TextColor(Color::srgb(0.4, 0.7, 1.0)),
-                    ));
-
-                    let options = ["Resume", "Title Screen"];
-                    for (i, label) in options.iter().enumerate() {
-                        let is_selected = i == 0; // default selection
-                        let color = if is_selected {
-                            Color::srgb(1.0, 1.0, 0.3)
-                        } else {
-                            Color::srgb(0.8, 0.8, 0.8)
-                        };
-                        let prefix = if is_selected { "> " } else { "  " };
-                        panel.spawn((
-                            Text::new(format!("{}{}", prefix, label)),
-                            TextFont {
-                                font_size: 24.0,
-                                ..default()
-                            },
-                            TextColor(color),
-                        ));
-                    }
-                });
-        });
+    leaderboard_visible.0 = false;
+    rebuild_pause_menu_spawn(&mut commands, pause_sel.0, &game_mode);
 }
 
 fn pause_menu_input(
@@ -465,9 +480,19 @@ fn pause_menu_input(
     mut pause_sel: ResMut<PauseSelection>,
     mut next_state: ResMut<NextState<GamePhase>>,
     mut commands: Commands,
-    existing: Query<Entity, With<PauseUi>>,
+    existing_pause: Query<Entity, With<PauseUi>>,
+    existing_lb: Query<Entity, With<LeaderboardUi>>,
     level_query: Query<Entity, With<LevelEntity>>,
     player_query: Query<Entity, With<Player>>,
+    game_mode: Res<GameMode>,
+    mut leaderboard_visible: ResMut<LeaderboardVisible>,
+    mut lb_selection: ResMut<LeaderboardSelection>,
+    local_leaderboard: Res<Leaderboard>,
+    online_leaderboard: Res<OnlineLeaderboard>,
+    mut replay_data: ResMut<ReplayData>,
+    mut pending_replay: ResMut<PendingReplayFetch>,
+    replay_status: Res<ReplayFetchStatus>,
+    timer: Res<SpeedrunTimer>,
 ) {
     let gamepad = gamepads.iter().next();
 
@@ -477,13 +502,76 @@ fn pause_menu_input(
     let up = keys.just_pressed(KeyCode::ArrowUp) || keys.just_pressed(KeyCode::KeyW) || gp_up;
     let down = keys.just_pressed(KeyCode::ArrowDown) || keys.just_pressed(KeyCode::KeyS) || gp_down;
 
+    // If leaderboard is open, handle leaderboard navigation
+    if leaderboard_visible.0 {
+        let use_online = !online_leaderboard.entries.is_empty();
+        let entry_count = if use_online {
+            online_leaderboard.entries.len()
+        } else {
+            local_leaderboard.entries.len()
+        };
+
+        if entry_count > 0 {
+            let max_idx = entry_count.saturating_sub(1);
+            let mut changed = false;
+            if up && lb_selection.0 > 0 {
+                lb_selection.0 -= 1;
+                changed = true;
+            }
+            if down && lb_selection.0 < max_idx {
+                lb_selection.0 += 1;
+                changed = true;
+            }
+            if changed {
+                for entity in &existing_lb {
+                    commands.entity(entity).despawn();
+                }
+                spawn_leaderboard(&mut commands, &local_leaderboard, &online_leaderboard, lb_selection.0, &replay_status, timer.final_time);
+            }
+
+            // Confirm — start replay
+            let gp_confirm = gamepad.is_some_and(|g| g.just_pressed(GamepadButton::South));
+            if keys.just_pressed(KeyCode::Space) || keys.just_pressed(KeyCode::Enter) || gp_confirm {
+                if !replay_status.loading {
+                    if use_online {
+                        pending_replay.0 = Some(lb_selection.0);
+                        for entity in &existing_lb {
+                            commands.entity(entity).despawn();
+                        }
+                        spawn_leaderboard(&mut commands, &local_leaderboard, &online_leaderboard, lb_selection.0, &replay_status, timer.final_time);
+                    } else {
+                        let entry = &local_leaderboard.entries[lb_selection.0];
+                        replay_data.frames = entry.inputs.clone();
+                        replay_data.seed = entry.seed;
+                        replay_data.frame_index = 0;
+                        next_state.set(GamePhase::Replaying);
+                    }
+                }
+                return;
+            }
+        }
+
+        // Close leaderboard (back to pause menu)
+        let gp_back = gamepad.is_some_and(|g| g.just_pressed(GamepadButton::East));
+        if keys.just_pressed(KeyCode::Escape) || gp_back {
+            leaderboard_visible.0 = false;
+            for entity in &existing_lb {
+                commands.entity(entity).despawn();
+            }
+        }
+        return;
+    }
+
+    // Normal pause menu navigation
+    let max_idx = pause_menu_options(&game_mode).len().saturating_sub(1);
+
     if up && pause_sel.0 > 0 {
         pause_sel.0 -= 1;
-        rebuild_pause_menu(&mut commands, &existing, pause_sel.0);
+        rebuild_pause_menu(&mut commands, &existing_pause, pause_sel.0, &game_mode);
     }
-    if down && pause_sel.0 < 1 {
+    if down && pause_sel.0 < max_idx {
         pause_sel.0 += 1;
-        rebuild_pause_menu(&mut commands, &existing, pause_sel.0);
+        rebuild_pause_menu(&mut commands, &existing_pause, pause_sel.0, &game_mode);
     }
 
     // Resume on Escape
@@ -495,13 +583,18 @@ fn pause_menu_input(
 
     let gp_confirm = gamepad.is_some_and(|g| g.just_pressed(GamepadButton::South));
     if keys.just_pressed(KeyCode::Space) || keys.just_pressed(KeyCode::Enter) || gp_confirm {
-        match pause_sel.0 {
-            0 => {
-                // Resume
+        let options = pause_menu_options(&game_mode);
+        let label = options[pause_sel.0];
+        match label {
+            "Resume" => {
                 next_state.set(GamePhase::Playing);
             }
-            1 => {
-                // Title Screen — clean up level and player
+            "Leaderboard" => {
+                leaderboard_visible.0 = true;
+                lb_selection.0 = 0;
+                spawn_leaderboard(&mut commands, &local_leaderboard, &online_leaderboard, lb_selection.0, &replay_status, timer.final_time);
+            }
+            "Title Screen" => {
                 for entity in &level_query {
                     commands.entity(entity).despawn();
                 }
@@ -515,14 +608,27 @@ fn pause_menu_input(
     }
 }
 
+fn pause_menu_options(game_mode: &GameMode) -> Vec<&'static str> {
+    match game_mode {
+        GameMode::Levels => vec!["Resume", "Leaderboard", "Title Screen"],
+        GameMode::Zen => vec!["Resume", "Title Screen"],
+    }
+}
+
 fn rebuild_pause_menu(
     commands: &mut Commands,
     existing: &Query<Entity, With<PauseUi>>,
     selected: usize,
+    game_mode: &GameMode,
 ) {
     for entity in existing {
         commands.entity(entity).despawn();
     }
+    rebuild_pause_menu_spawn(commands, selected, game_mode);
+}
+
+fn rebuild_pause_menu_spawn(commands: &mut Commands, selected: usize, game_mode: &GameMode) {
+    let options = pause_menu_options(game_mode);
 
     commands
         .spawn((
@@ -558,7 +664,6 @@ fn rebuild_pause_menu(
                         TextColor(Color::srgb(0.4, 0.7, 1.0)),
                     ));
 
-                    let options = ["Resume", "Title Screen"];
                     for (i, label) in options.iter().enumerate() {
                         let is_selected = i == selected;
                         let color = if is_selected {
@@ -644,130 +749,26 @@ fn spawn_hud(mut commands: Commands) {
 
 // --- Leaderboard ---
 
-fn toggle_leaderboard(
-    keys: Res<ButtonInput<KeyCode>>,
-    gamepads: Query<&Gamepad>,
-    mut visible: ResMut<LeaderboardVisible>,
-    mut commands: Commands,
-    existing: Query<Entity, With<LeaderboardUi>>,
-    local_leaderboard: Res<Leaderboard>,
-    online_leaderboard: Res<OnlineLeaderboard>,
-    mut selection: ResMut<LeaderboardSelection>,
-    replay_status: Res<ReplayFetchStatus>,
-    game_mode: Res<GameMode>,
-) {
-    if *game_mode == GameMode::Zen {
-        return;
-    }
-
-    let gp_toggle = gamepads
-        .iter()
-        .next()
-        .is_some_and(|g| g.just_pressed(GamepadButton::Select));
-    if keys.just_pressed(KeyCode::KeyL) || gp_toggle {
-        visible.0 = !visible.0;
-        if visible.0 {
-            selection.0 = 0;
-            spawn_leaderboard(&mut commands, &local_leaderboard, &online_leaderboard, selection.0, &replay_status);
-        } else {
-            for entity in &existing {
-                commands.entity(entity).despawn();
-            }
-        }
-    }
-}
-
-fn navigate_leaderboard(
-    keys: Res<ButtonInput<KeyCode>>,
-    gamepads: Query<&Gamepad>,
-    visible: Res<LeaderboardVisible>,
-    local_leaderboard: Res<Leaderboard>,
-    online_leaderboard: Res<OnlineLeaderboard>,
-    mut selection: ResMut<LeaderboardSelection>,
-    mut commands: Commands,
-    existing: Query<Entity, With<LeaderboardUi>>,
-    mut next_state: ResMut<NextState<GamePhase>>,
-    mut replay_data: ResMut<ReplayData>,
-    mut pending_replay: ResMut<PendingReplayFetch>,
-    replay_status: Res<ReplayFetchStatus>,
-) {
-    if !visible.0 {
-        return;
-    }
-
-    let use_online = !online_leaderboard.entries.is_empty();
-    let entry_count = if use_online {
-        online_leaderboard.entries.len()
-    } else {
-        local_leaderboard.entries.len()
-    };
-
-    if entry_count == 0 {
-        return;
-    }
-
-    let gamepad = gamepads.iter().next();
-    let max_idx = entry_count.saturating_sub(1);
-
-    let gp_up = gamepad.is_some_and(|g| g.just_pressed(GamepadButton::DPadUp));
-    let gp_down = gamepad.is_some_and(|g| g.just_pressed(GamepadButton::DPadDown));
-
-    let up = keys.just_pressed(KeyCode::ArrowUp) || keys.just_pressed(KeyCode::KeyW) || gp_up;
-    let down = keys.just_pressed(KeyCode::ArrowDown) || keys.just_pressed(KeyCode::KeyS) || gp_down;
-
-    let mut changed = false;
-    if up && selection.0 > 0 {
-        selection.0 -= 1;
-        changed = true;
-    }
-    if down && selection.0 < max_idx {
-        selection.0 += 1;
-        changed = true;
-    }
-
-    if changed {
-        for entity in &existing {
-            commands.entity(entity).despawn();
-        }
-        spawn_leaderboard(&mut commands, &local_leaderboard, &online_leaderboard, selection.0, &replay_status);
-    }
-
-    // Confirm selection — start replay
-    let gp_confirm = gamepad.is_some_and(|g| g.just_pressed(GamepadButton::South));
-    if keys.just_pressed(KeyCode::Space) || keys.just_pressed(KeyCode::Enter) || gp_confirm {
-        if replay_status.loading {
-            return;
-        }
-        if use_online {
-            pending_replay.0 = Some(selection.0);
-            for entity in &existing {
-                commands.entity(entity).despawn();
-            }
-            spawn_leaderboard(&mut commands, &local_leaderboard, &online_leaderboard, selection.0, &replay_status);
-        } else {
-            let entry = &local_leaderboard.entries[selection.0];
-            replay_data.frames = entry.inputs.clone();
-            replay_data.seed = entry.seed;
-            replay_data.frame_index = 0;
-            next_state.set(GamePhase::Replaying);
-        }
-    }
-
-    // Close with Escape or B
-    let gp_close = gamepad.is_some_and(|g| g.just_pressed(GamepadButton::East));
-    if keys.just_pressed(KeyCode::KeyL) || keys.just_pressed(KeyCode::Escape) || gp_close {
-        // handled by toggle_leaderboard for L key, but handle Escape/B here too
-    }
-}
-
 fn spawn_leaderboard(
     commands: &mut Commands,
     local_leaderboard: &Leaderboard,
     online_leaderboard: &OnlineLeaderboard,
     selected: usize,
     replay_status: &ReplayFetchStatus,
+    last_time: Option<f32>,
 ) {
     let use_online = !online_leaderboard.entries.is_empty();
+
+    // Compute placement for last run
+    let placement = last_time.map(|t| {
+        let times: Vec<f32> = if use_online {
+            online_leaderboard.entries.iter().map(|e| e.time).collect()
+        } else {
+            local_leaderboard.entries.iter().map(|e| e.time).collect()
+        };
+        let pos = times.iter().position(|&lt| t <= lt).unwrap_or(times.len());
+        pos + 1
+    });
 
     commands
         .spawn((
@@ -782,128 +783,189 @@ fn spawn_leaderboard(
         ))
         .with_children(|parent| {
             parent
-                .spawn((
-                    Node {
-                        flex_direction: FlexDirection::Column,
-                        align_items: AlignItems::Start,
-                        padding: UiRect::all(Val::Px(24.0)),
-                        row_gap: Val::Px(8.0),
-                        ..default()
-                    },
-                    BackgroundColor(Color::srgba(0.05, 0.05, 0.1, 0.9)),
-                ))
-                .with_children(|panel| {
-                    let header = match &online_leaderboard.status {
-                        NetStatus::Fetching => "LEADERBOARD  [Fetching...]",
-                        NetStatus::Error(_) => "LEADERBOARD  [Offline]",
-                        _ => "LEADERBOARD",
-                    };
-                    panel.spawn((
-                        Text::new(header),
-                        TextFont {
-                            font_size: 32.0,
-                            ..default()
-                        },
-                        TextColor(Color::srgb(0.4, 0.7, 1.0)),
-                    ));
-
-                    if use_online {
-                        for (i, entry) in online_leaderboard.entries.iter().enumerate() {
-                            let minutes = (entry.time / 60.0) as u32;
-                            let seconds = entry.time % 60.0;
-                            let is_selected = i == selected;
-                            let color = if is_selected {
-                                Color::srgb(1.0, 1.0, 0.3)
-                            } else if i == 0 {
-                                Color::srgb(0.2, 0.9, 0.3)
-                            } else {
-                                Color::srgb(0.8, 0.8, 0.8)
-                            };
-                            let prefix = if is_selected { "> " } else { "  " };
-                            panel.spawn((
-                                LeaderboardRow(i),
-                                Text::new(format!(
-                                    "{}#{}  {:02}:{:06.3}  {}",
-                                    prefix,
-                                    i + 1,
-                                    minutes,
-                                    seconds,
-                                    entry.name,
-                                )),
-                                TextFont {
-                                    font_size: 20.0,
-                                    ..default()
-                                },
-                                TextColor(color),
-                            ));
-                        }
-                    } else if !local_leaderboard.entries.is_empty() {
-                        for (i, entry) in local_leaderboard.entries.iter().enumerate() {
-                            let minutes = (entry.time / 60.0) as u32;
-                            let seconds = entry.time % 60.0;
-                            let is_selected = i == selected;
-                            let color = if is_selected {
-                                Color::srgb(1.0, 1.0, 0.3)
-                            } else if i == 0 {
-                                Color::srgb(0.2, 0.9, 0.3)
-                            } else {
-                                Color::srgb(0.8, 0.8, 0.8)
-                            };
-                            let prefix = if is_selected { "> " } else { "  " };
-                            panel.spawn((
-                                LeaderboardRow(i),
-                                Text::new(format!(
-                                    "{}#{}  {:02}:{:06.3}",
-                                    prefix,
-                                    i + 1,
-                                    minutes,
-                                    seconds,
-                                )),
-                                TextFont {
-                                    font_size: 20.0,
-                                    ..default()
-                                },
-                                TextColor(color),
-                            ));
-                        }
-                    } else {
-                        panel.spawn((
-                            Text::new("No times recorded yet"),
-                            TextFont {
-                                font_size: 20.0,
-                                ..default()
-                            },
-                            TextColor(Color::srgb(0.6, 0.6, 0.6)),
-                        ));
-                    }
-
-                    if replay_status.loading {
-                        panel.spawn((
-                            Text::new("Loading replay..."),
-                            TextFont {
-                                font_size: 18.0,
-                                ..default()
-                            },
-                            TextColor(Color::srgb(1.0, 0.8, 0.3)),
-                            Node {
-                                margin: UiRect::top(Val::Px(8.0)),
-                                ..default()
-                            },
-                        ));
-                    }
-
-                    panel.spawn((
-                        Text::new("Up/Down: Select  |  A/Space: Replay  |  L: Close"),
-                        TextFont {
-                            font_size: 16.0,
-                            ..default()
-                        },
-                        TextColor(Color::srgb(0.5, 0.5, 0.5)),
+                .spawn(Node {
+                    flex_direction: FlexDirection::Row,
+                    align_items: AlignItems::FlexStart,
+                    column_gap: Val::Px(24.0),
+                    ..default()
+                })
+                .with_children(|row| {
+                    // Left panel: leaderboard entries
+                    row.spawn((
                         Node {
-                            margin: UiRect::top(Val::Px(16.0)),
+                            flex_direction: FlexDirection::Column,
+                            align_items: AlignItems::Start,
+                            padding: UiRect::all(Val::Px(24.0)),
+                            row_gap: Val::Px(8.0),
                             ..default()
                         },
-                    ));
+                        BackgroundColor(Color::srgba(0.05, 0.05, 0.1, 0.9)),
+                    ))
+                    .with_children(|panel| {
+                        let header = match &online_leaderboard.status {
+                            NetStatus::Fetching => "LEADERBOARD  [Fetching...]",
+                            NetStatus::Error(_) => "LEADERBOARD  [Offline]",
+                            _ => "LEADERBOARD",
+                        };
+                        panel.spawn((
+                            Text::new(header),
+                            TextFont {
+                                font_size: 32.0,
+                                ..default()
+                            },
+                            TextColor(Color::srgb(0.4, 0.7, 1.0)),
+                        ));
+
+                        if use_online {
+                            for (i, entry) in online_leaderboard.entries.iter().enumerate() {
+                                let minutes = (entry.time / 60.0) as u32;
+                                let seconds = entry.time % 60.0;
+                                let is_selected = i == selected;
+                                let color = if is_selected {
+                                    Color::srgb(1.0, 1.0, 0.3)
+                                } else if i == 0 {
+                                    Color::srgb(0.2, 0.9, 0.3)
+                                } else {
+                                    Color::srgb(0.8, 0.8, 0.8)
+                                };
+                                let prefix = if is_selected { "> " } else { "  " };
+                                panel.spawn((
+                                    LeaderboardRow(i),
+                                    Text::new(format!(
+                                        "{}#{}  {:02}:{:06.3}  {}",
+                                        prefix,
+                                        i + 1,
+                                        minutes,
+                                        seconds,
+                                        entry.name,
+                                    )),
+                                    TextFont {
+                                        font_size: 20.0,
+                                        ..default()
+                                    },
+                                    TextColor(color),
+                                ));
+                            }
+                        } else if !local_leaderboard.entries.is_empty() {
+                            for (i, entry) in local_leaderboard.entries.iter().enumerate() {
+                                let minutes = (entry.time / 60.0) as u32;
+                                let seconds = entry.time % 60.0;
+                                let is_selected = i == selected;
+                                let color = if is_selected {
+                                    Color::srgb(1.0, 1.0, 0.3)
+                                } else if i == 0 {
+                                    Color::srgb(0.2, 0.9, 0.3)
+                                } else {
+                                    Color::srgb(0.8, 0.8, 0.8)
+                                };
+                                let prefix = if is_selected { "> " } else { "  " };
+                                panel.spawn((
+                                    LeaderboardRow(i),
+                                    Text::new(format!(
+                                        "{}#{}  {:02}:{:06.3}",
+                                        prefix,
+                                        i + 1,
+                                        minutes,
+                                        seconds,
+                                    )),
+                                    TextFont {
+                                        font_size: 20.0,
+                                        ..default()
+                                    },
+                                    TextColor(color),
+                                ));
+                            }
+                        } else {
+                            panel.spawn((
+                                Text::new("No times recorded yet"),
+                                TextFont {
+                                    font_size: 20.0,
+                                    ..default()
+                                },
+                                TextColor(Color::srgb(0.6, 0.6, 0.6)),
+                            ));
+                        }
+
+                        if replay_status.loading {
+                            panel.spawn((
+                                Text::new("Loading replay..."),
+                                TextFont {
+                                    font_size: 18.0,
+                                    ..default()
+                                },
+                                TextColor(Color::srgb(1.0, 0.8, 0.3)),
+                                Node {
+                                    margin: UiRect::top(Val::Px(8.0)),
+                                    ..default()
+                                },
+                            ));
+                        }
+
+                        panel.spawn((
+                            Text::new("Up/Down: Select  |  A/Space: Replay  |  Esc/B: Back"),
+                            TextFont {
+                                font_size: 16.0,
+                                ..default()
+                            },
+                            TextColor(Color::srgb(0.5, 0.5, 0.5)),
+                            Node {
+                                margin: UiRect::top(Val::Px(16.0)),
+                                ..default()
+                            },
+                        ));
+                    });
+
+                    // Right panel: last run info
+                    if let Some(time) = last_time {
+                        let minutes = (time / 60.0) as u32;
+                        let seconds = time % 60.0;
+                        let place = placement.unwrap_or(0);
+                        let suffix = match place {
+                            1 => "st",
+                            2 => "nd",
+                            3 => "rd",
+                            _ => "th",
+                        };
+
+                        row.spawn((
+                            Node {
+                                flex_direction: FlexDirection::Column,
+                                align_items: AlignItems::Center,
+                                padding: UiRect::all(Val::Px(24.0)),
+                                row_gap: Val::Px(12.0),
+                                ..default()
+                            },
+                            BackgroundColor(Color::srgba(0.05, 0.05, 0.1, 0.9)),
+                        ))
+                        .with_children(|panel| {
+                            panel.spawn((
+                                Text::new("YOUR RUN"),
+                                TextFont {
+                                    font_size: 24.0,
+                                    ..default()
+                                },
+                                TextColor(Color::srgb(0.4, 0.7, 1.0)),
+                            ));
+
+                            panel.spawn((
+                                Text::new(format!("{:02}:{:06.3}", minutes, seconds)),
+                                TextFont {
+                                    font_size: 32.0,
+                                    ..default()
+                                },
+                                TextColor(Color::WHITE),
+                            ));
+
+                            panel.spawn((
+                                Text::new(format!("{}{}", place, suffix)),
+                                TextFont {
+                                    font_size: 28.0,
+                                    ..default()
+                                },
+                                TextColor(Color::srgb(1.0, 0.8, 0.3)),
+                            ));
+                        });
+                    }
                 });
         });
 }
