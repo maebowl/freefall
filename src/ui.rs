@@ -183,7 +183,7 @@ pub fn keyboard_gamepad_input(gamepad: &Gamepad, cursor: &mut KeyboardCursor) ->
     (KeyboardAction::None, moved)
 }
 
-pub fn spawn_keyboard_grid(parent: &mut ChildBuilder, cursor: &KeyboardCursor) {
+pub fn spawn_keyboard_grid(parent: &mut ChildSpawnerCommands, cursor: &KeyboardCursor) {
     parent
         .spawn(Node {
             flex_direction: FlexDirection::Column,
@@ -192,14 +192,14 @@ pub fn spawn_keyboard_grid(parent: &mut ChildBuilder, cursor: &KeyboardCursor) {
             margin: UiRect::top(Val::Px(8.0)),
             ..default()
         })
-        .with_children(|kb| {
+        .with_children(|kb: &mut ChildSpawnerCommands| {
             for (r, row) in KB_GRID.iter().enumerate() {
                 kb.spawn(Node {
                     flex_direction: FlexDirection::Row,
                     column_gap: Val::Px(4.0),
                     ..default()
                 })
-                .with_children(|row_node| {
+                .with_children(|row_node: &mut ChildSpawnerCommands| {
                     for (c, key) in row.iter().enumerate() {
                         let selected = r == cursor.row && c == cursor.col;
                         let (bg, fg) = if selected {
@@ -228,7 +228,7 @@ pub fn spawn_keyboard_grid(parent: &mut ChildBuilder, cursor: &KeyboardCursor) {
                                 },
                                 BackgroundColor(bg),
                             ))
-                            .with_children(|cell| {
+                            .with_children(|cell: &mut ChildSpawnerCommands| {
                                 cell.spawn((
                                     Text::new(*key),
                                     TextFont {
