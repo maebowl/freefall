@@ -103,7 +103,7 @@ fn setup_replay(
         Friction::new(0.0),
         LockedAxes::ROTATION_LOCKED,
         Sprite {
-            image: asset_server.load("burningman.png"),
+            image: asset_server.load("placeholder-sprite.png"),
             color: Color::srgba(1.0, 1.0, 1.0, 0.6),
             ..default()
         },

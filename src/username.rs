@@ -4,6 +4,7 @@ use bevy::prelude::*;
 
 use crate::level::GamePhase;
 use crate::net::PlayerName;
+use crate::ui::{keyboard_gamepad_input, spawn_keyboard_grid, KeyboardAction, KeyboardCursor};
 
 const MAX_NAME_LEN: usize = 16;
 
@@ -57,13 +58,16 @@ fn check_saved_name(
     mut next_state: ResMut<NextState<GamePhase>>,
     mut name_buf: ResMut<NameBuffer>,
     mut force: ResMut<ForceNameEntry>,
+    mut kb_cursor: ResMut<KeyboardCursor>,
 ) {
+    kb_cursor.row = 0;
+    kb_cursor.col = 0;
     if force.0 {
         // Forced name change — pre-fill with current name
         force.0 = false;
         let current = load_saved_name().unwrap_or_default();
         name_buf.0 = current.clone();
-        spawn_name_entry_ui(&mut commands, &current);
+        spawn_name_entry_ui(&mut commands, &current, &kb_cursor);
         return;
     }
     if let Some(name) = load_saved_name() {
@@ -75,10 +79,10 @@ fn check_saved_name(
     }
     // No saved name — show the entry UI
     name_buf.0.clear();
-    spawn_name_entry_ui(&mut commands, "");
+    spawn_name_entry_ui(&mut commands, "", &kb_cursor);
 }
 
-fn spawn_name_entry_ui(commands: &mut Commands, current: &str) {
+fn spawn_name_entry_ui(commands: &mut Commands, current: &str, kb_cursor: &KeyboardCursor) {
     commands
         .spawn((
             NameEntryUi,
@@ -126,6 +130,8 @@ fn spawn_name_entry_ui(commands: &mut Commands, current: &str) {
                 TextColor(Color::WHITE),
             ));
 
+            spawn_keyboard_grid(parent, kb_cursor);
+
             parent.spawn((
                 Text::new("A-Z, 0-9, Backspace  |  Enter to confirm"),
                 TextFont {
@@ -146,9 +152,11 @@ fn despawn_name_entry_ui(mut commands: Commands, query: Query<Entity, With<NameE
 fn name_entry_input(
     mut commands: Commands,
     keys: Res<ButtonInput<KeyCode>>,
+    gamepads: Query<&Gamepad>,
     mut name_buf: ResMut<NameBuffer>,
     mut next_state: ResMut<NextState<GamePhase>>,
     existing: Query<Entity, With<NameEntryUi>>,
+    mut kb_cursor: ResMut<KeyboardCursor>,
 ) {
     let mut changed = false;
 
@@ -208,7 +216,7 @@ fn name_entry_input(
         }
     }
 
-    // Confirm
+    // Confirm (keyboard)
     if keys.just_pressed(KeyCode::Enter) && !name_buf.0.is_empty() {
         let name = name_buf.0.clone();
         save_name(&name);
@@ -217,11 +225,41 @@ fn name_entry_input(
         return;
     }
 
+    // Gamepad input via on-screen keyboard
+    if let Some(gp) = gamepads.iter().next() {
+        let (action, moved) = keyboard_gamepad_input(gp, &mut kb_cursor);
+        match action {
+            KeyboardAction::Type(c) => {
+                if name_buf.0.len() < MAX_NAME_LEN {
+                    name_buf.0.push(c);
+                    changed = true;
+                }
+            }
+            KeyboardAction::Delete => {
+                if !name_buf.0.is_empty() {
+                    name_buf.0.pop();
+                    changed = true;
+                }
+            }
+            KeyboardAction::Confirm => {
+                if !name_buf.0.is_empty() {
+                    let name = name_buf.0.clone();
+                    save_name(&name);
+                    commands.insert_resource(PlayerName(name));
+                    next_state.set(GamePhase::TitleScreen);
+                    return;
+                }
+            }
+            KeyboardAction::None => {}
+        }
+        if moved { changed = true; }
+    }
+
     // Rebuild UI on change
     if changed {
         for entity in &existing {
             commands.entity(entity).despawn();
         }
-        spawn_name_entry_ui(&mut commands, &name_buf.0);
+        spawn_name_entry_ui(&mut commands, &name_buf.0, &kb_cursor);
     }
 }

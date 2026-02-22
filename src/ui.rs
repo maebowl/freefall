@@ -120,6 +120,130 @@ const MAX_NAME_LEN: usize = 16;
 #[derive(Resource, Default)]
 pub struct DeferredSubmission(pub Option<crate::net::SubmissionData>);
 
+// --- On-screen keyboard ---
+
+pub const KB_GRID: &[&[&str]] = &[
+    &["A","B","C","D","E","F","G","H","I","J"],
+    &["K","L","M","N","O","P","Q","R","S","T"],
+    &["U","V","W","X","Y","Z","0","1","2","3"],
+    &["4","5","6","7","8","9","DEL","OK"],
+];
+
+#[derive(Resource, Default)]
+pub struct KeyboardCursor {
+    pub row: usize,
+    pub col: usize,
+}
+
+pub enum KeyboardAction {
+    None,
+    Type(char),
+    Delete,
+    Confirm,
+}
+
+pub fn keyboard_gamepad_input(gamepad: &Gamepad, cursor: &mut KeyboardCursor) -> (KeyboardAction, bool) {
+    let mut moved = false;
+
+    if gamepad.just_pressed(GamepadButton::DPadUp) && cursor.row > 0 {
+        cursor.row -= 1;
+        cursor.col = cursor.col.min(KB_GRID[cursor.row].len() - 1);
+        moved = true;
+    }
+    if gamepad.just_pressed(GamepadButton::DPadDown) && cursor.row < KB_GRID.len() - 1 {
+        cursor.row += 1;
+        cursor.col = cursor.col.min(KB_GRID[cursor.row].len() - 1);
+        moved = true;
+    }
+    if gamepad.just_pressed(GamepadButton::DPadLeft) && cursor.col > 0 {
+        cursor.col -= 1;
+        moved = true;
+    }
+    if gamepad.just_pressed(GamepadButton::DPadRight) && cursor.col < KB_GRID[cursor.row].len() - 1 {
+        cursor.col += 1;
+        moved = true;
+    }
+
+    if gamepad.just_pressed(GamepadButton::South) {
+        let key = KB_GRID[cursor.row][cursor.col];
+        let action = match key {
+            "DEL" => KeyboardAction::Delete,
+            "OK" => KeyboardAction::Confirm,
+            s => s.chars().next().map(KeyboardAction::Type).unwrap_or(KeyboardAction::None),
+        };
+        return (action, moved);
+    }
+    if gamepad.just_pressed(GamepadButton::East) {
+        return (KeyboardAction::Delete, moved);
+    }
+    if gamepad.just_pressed(GamepadButton::Start) {
+        return (KeyboardAction::Confirm, moved);
+    }
+
+    (KeyboardAction::None, moved)
+}
+
+pub fn spawn_keyboard_grid(parent: &mut ChildBuilder, cursor: &KeyboardCursor) {
+    parent
+        .spawn(Node {
+            flex_direction: FlexDirection::Column,
+            align_items: AlignItems::Center,
+            row_gap: Val::Px(4.0),
+            margin: UiRect::top(Val::Px(8.0)),
+            ..default()
+        })
+        .with_children(|kb| {
+            for (r, row) in KB_GRID.iter().enumerate() {
+                kb.spawn(Node {
+                    flex_direction: FlexDirection::Row,
+                    column_gap: Val::Px(4.0),
+                    ..default()
+                })
+                .with_children(|row_node| {
+                    for (c, key) in row.iter().enumerate() {
+                        let selected = r == cursor.row && c == cursor.col;
+                        let (bg, fg) = if selected {
+                            (Color::srgb(1.0, 1.0, 0.3), Color::srgb(0.05, 0.05, 0.1))
+                        } else {
+                            match *key {
+                                "DEL" => (Color::srgba(0.4, 0.15, 0.15, 0.8), Color::srgb(0.9, 0.5, 0.5)),
+                                "OK" => (Color::srgba(0.15, 0.4, 0.15, 0.8), Color::srgb(0.5, 0.9, 0.5)),
+                                _ => (Color::srgba(0.2, 0.2, 0.3, 0.8), Color::srgb(0.8, 0.8, 0.8)),
+                            }
+                        };
+                        let min_w = if *key == "DEL" || *key == "OK" {
+                            Val::Px(48.0)
+                        } else {
+                            Val::Px(28.0)
+                        };
+                        row_node
+                            .spawn((
+                                Node {
+                                    min_width: min_w,
+                                    min_height: Val::Px(28.0),
+                                    justify_content: JustifyContent::Center,
+                                    align_items: AlignItems::Center,
+                                    padding: UiRect::horizontal(Val::Px(4.0)),
+                                    ..default()
+                                },
+                                BackgroundColor(bg),
+                            ))
+                            .with_children(|cell| {
+                                cell.spawn((
+                                    Text::new(*key),
+                                    TextFont {
+                                        font_size: 16.0,
+                                        ..default()
+                                    },
+                                    TextColor(fg),
+                                ));
+                            });
+                    }
+                });
+            }
+        });
+}
+
 // --- Plugin ---
 
 pub struct UiPlugin;
@@ -137,6 +261,7 @@ impl Plugin for UiPlugin {
             .init_resource::<LastRunTime>()
             .init_resource::<ScoreNamePrompt>()
             .init_resource::<DeferredSubmission>()
+            .init_resource::<KeyboardCursor>()
             // Title screen
             .add_systems(OnEnter(GamePhase::TitleScreen), (spawn_title_screen, despawn_marked::<HudUi>, despawn_marked::<LeaderboardUi>, clear_leaderboard_visible))
             .add_systems(OnExit(GamePhase::TitleScreen), despawn_marked::<TitleScreenUi>)
@@ -753,6 +878,7 @@ fn spawn_level_complete(
     mut name_prompt: ResMut<ScoreNamePrompt>,
     mut deferred: ResMut<DeferredSubmission>,
     mut pending: ResMut<PendingSubmission>,
+    mut kb_cursor: ResMut<KeyboardCursor>,
 ) {
     let has_next = *game_mode == GameMode::Levels && current_level.0 + 1 < LEVEL_ORDER.len();
     // Default to "Restart"
@@ -775,6 +901,8 @@ fn spawn_level_complete(
         let current_name = player_name.map(|n| n.0.clone()).unwrap_or_default();
         name_prompt.active = true;
         name_prompt.buffer = current_name;
+        kb_cursor.row = 0;
+        kb_cursor.col = 0;
     } else {
         name_prompt.active = false;
         name_prompt.buffer.clear();
@@ -784,7 +912,7 @@ fn spawn_level_complete(
         }
     }
 
-    rebuild_level_complete_spawn(&mut commands, sel.0, timer.final_time, has_next, is_wr, &name_prompt);
+    rebuild_level_complete_spawn(&mut commands, sel.0, timer.final_time, has_next, is_wr, &name_prompt, &kb_cursor);
 }
 
 fn level_complete_options(has_next: bool) -> Vec<&'static str> {
@@ -802,6 +930,7 @@ fn rebuild_level_complete_spawn(
     has_next: bool,
     is_wr: bool,
     name_prompt: &ScoreNamePrompt,
+    kb_cursor: &KeyboardCursor,
 ) {
     let time = final_time.unwrap_or(0.0);
     let minutes = (time / 60.0) as u32;
@@ -886,14 +1015,7 @@ fn rebuild_level_complete_spawn(
                             TextColor(Color::WHITE),
                         ));
 
-                        panel.spawn((
-                            Text::new("A-Z, 0-9, Backspace  |  Enter to confirm"),
-                            TextFont {
-                                font_size: 16.0,
-                                ..default()
-                            },
-                            TextColor(Color::srgb(0.5, 0.5, 0.5)),
-                        ));
+                        spawn_keyboard_grid(panel, kb_cursor);
                     } else {
                         let options = level_complete_options(has_next);
 
@@ -939,6 +1061,7 @@ fn level_complete_input(
     mut name_prompt: ResMut<ScoreNamePrompt>,
     mut deferred: ResMut<DeferredSubmission>,
     mut pending: ResMut<PendingSubmission>,
+    mut kb_cursor: ResMut<KeyboardCursor>,
 ) {
     let gamepad = gamepads.iter().next();
     let has_next = *game_mode == GameMode::Levels && current_level.0 + 1 < LEVEL_ORDER.len();
@@ -1004,15 +1127,52 @@ fn level_complete_input(
             for entity in &existing {
                 commands.entity(entity).despawn();
             }
-            rebuild_level_complete_spawn(&mut commands, sel.0, timer.final_time, has_next, is_wr, &name_prompt);
+            rebuild_level_complete_spawn(&mut commands, sel.0, timer.final_time, has_next, is_wr, &name_prompt, &kb_cursor);
             return;
+        }
+
+        // Gamepad input via on-screen keyboard
+        if let Some(gp) = gamepad {
+            let (action, moved) = keyboard_gamepad_input(gp, &mut kb_cursor);
+            match action {
+                KeyboardAction::Type(c) => {
+                    if name_prompt.buffer.len() < MAX_NAME_LEN {
+                        name_prompt.buffer.push(c);
+                        changed = true;
+                    }
+                }
+                KeyboardAction::Delete => {
+                    if !name_prompt.buffer.is_empty() {
+                        name_prompt.buffer.pop();
+                        changed = true;
+                    }
+                }
+                KeyboardAction::Confirm => {
+                    if !name_prompt.buffer.is_empty() {
+                        let name = name_prompt.buffer.clone();
+                        username::save_name(&name);
+                        commands.insert_resource(PlayerName(name));
+                        if let Some(data) = deferred.0.take() {
+                            pending.0 = Some(data);
+                        }
+                        name_prompt.active = false;
+                        for entity in &existing {
+                            commands.entity(entity).despawn();
+                        }
+                        rebuild_level_complete_spawn(&mut commands, sel.0, timer.final_time, has_next, is_wr, &name_prompt, &kb_cursor);
+                        return;
+                    }
+                }
+                KeyboardAction::None => {}
+            }
+            if moved { changed = true; }
         }
 
         if changed {
             for entity in &existing {
                 commands.entity(entity).despawn();
             }
-            rebuild_level_complete_spawn(&mut commands, sel.0, timer.final_time, has_next, is_wr, &name_prompt);
+            rebuild_level_complete_spawn(&mut commands, sel.0, timer.final_time, has_next, is_wr, &name_prompt, &kb_cursor);
         }
         return;
     }
@@ -1041,7 +1201,7 @@ fn level_complete_input(
         for entity in &existing {
             commands.entity(entity).despawn();
         }
-        rebuild_level_complete_spawn(&mut commands, sel.0, timer.final_time, has_next, is_wr, &name_prompt);
+        rebuild_level_complete_spawn(&mut commands, sel.0, timer.final_time, has_next, is_wr, &name_prompt, &kb_cursor);
     }
 
     let gp_confirm = gamepad.is_some_and(|g| g.just_pressed(GamepadButton::South));

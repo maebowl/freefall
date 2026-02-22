@@ -110,7 +110,7 @@ pub fn spawn_player(commands: &mut Commands, asset_server: &AssetServer, positio
         GravityScale(1.0),
         Friction::new(0.0),
         LockedAxes::ROTATION_LOCKED,
-        Sprite::from_image(asset_server.load("burningman.png")),
+        Sprite::from_image(asset_server.load("placeholder-sprite.png")),
         Transform::from_translation(position.extend(0.0)),
     ));
 }
