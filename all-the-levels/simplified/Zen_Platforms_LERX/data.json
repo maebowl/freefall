@@ -1,0 +1,17 @@
+{
+	"identifier": "Zen_Platforms_LERX",
+	"uniqueIdentifer": "48e4e320-fa90-11f0-9c43-a118e0df73dd",
+	"x": -1,
+	"y": -1,
+	"width": 640,
+	"height": 128,
+	"bgColor": "#222225",
+	"neighbourLevels": [],
+	"customFields" : {},
+	"layers": [
+		"Background.png",
+		"Walls.png",
+		"Door.png"
+	],
+	"entities" : {}
+}

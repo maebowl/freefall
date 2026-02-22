@@ -1,5 +1,7 @@
 use avian2d::prelude::*;
 use bevy::prelude::*;
+use rand::rngs::StdRng;
+use rand::{Rng, SeedableRng};
 use serde::Deserialize;
 
 use crate::level::{merge_grid_to_rects, Checkpoint, GamePhase, LevelEntity};
@@ -58,8 +60,16 @@ impl CurrentLevel {
 
 #[derive(Deserialize)]
 struct LevelData {
+    #[serde(default = "default_level_px")]
+    width: f32,
+    #[serde(default = "default_level_px")]
+    height: f32,
     layers: Vec<String>,
     entities: Entities,
+}
+
+fn default_level_px() -> f32 {
+    640.0
 }
 
 #[derive(Deserialize)]
@@ -259,6 +269,239 @@ pub fn build_ldtk_level(commands: &mut Commands, asset_server: &AssetServer, lev
     info!("Loaded LDtk level {} (spawn at {:?})", level_name, sp);
 
     sp
+}
+
+// --- Zen level stitching ---
+
+pub const ZEN_PIECE_NAMES: &[&str] = &[
+    "Zen_Platforms_LELX",
+    "Zen_Platforms_LERX",
+    "Zen_Platforms_RELX",
+    "Zen_Platforms_RERX",
+];
+
+fn zen_level_data(name: &str) -> (&'static str, &'static str, &'static str) {
+    match name {
+        "Zen_bottom" => (
+            include_str!("../assets/levels/Zen_bottom/data.json"),
+            include_str!("../assets/levels/Zen_bottom/Walls.csv"),
+            include_str!("../assets/levels/Zen_bottom/Door.csv"),
+        ),
+        "Zen_Platforms_LELX" => (
+            include_str!("../assets/levels/Zen_Platforms_LELX/data.json"),
+            include_str!("../assets/levels/Zen_Platforms_LELX/Walls.csv"),
+            include_str!("../assets/levels/Zen_Platforms_LELX/Door.csv"),
+        ),
+        "Zen_Platforms_LERX" => (
+            include_str!("../assets/levels/Zen_Platforms_LERX/data.json"),
+            include_str!("../assets/levels/Zen_Platforms_LERX/Walls.csv"),
+            include_str!("../assets/levels/Zen_Platforms_LERX/Door.csv"),
+        ),
+        "Zen_Platforms_RELX" => (
+            include_str!("../assets/levels/Zen_Platforms_RELX/data.json"),
+            include_str!("../assets/levels/Zen_Platforms_RELX/Walls.csv"),
+            include_str!("../assets/levels/Zen_Platforms_RELX/Door.csv"),
+        ),
+        "Zen_Platforms_RERX" => (
+            include_str!("../assets/levels/Zen_Platforms_RERX/data.json"),
+            include_str!("../assets/levels/Zen_Platforms_RERX/Walls.csv"),
+            include_str!("../assets/levels/Zen_Platforms_RERX/Door.csv"),
+        ),
+        _ => panic!("Unknown zen level: {name}"),
+    }
+}
+
+/// Parse entrance/exit sides from a zen piece name.
+/// Returns ((left_entrance, right_entrance), (left_exit, right_exit))
+pub fn parse_zen_sides(name: &str) -> ((bool, bool), (bool, bool)) {
+    // Find the last segment after the last underscore that contains E and X
+    let suffix = name.rsplit('_').next().unwrap_or("");
+    let e_pos = suffix.find('E');
+    let x_pos = suffix.find('X');
+
+    match (e_pos, x_pos) {
+        (Some(e), Some(x)) if e < x => {
+            let entrance_str = &suffix[..e];
+            let exit_str = &suffix[e + 1..x];
+            let entrances = (entrance_str.contains('L'), entrance_str.contains('R'));
+            let exits = (exit_str.contains('L'), exit_str.contains('R'));
+            (entrances, exits)
+        }
+        _ => ((true, true), (true, true)), // Fallback: open on all sides
+    }
+}
+
+/// Pick a random compatible zen piece whose entrance overlaps the previous exit.
+pub fn pick_zen_piece(rng: &mut StdRng, last_exits: (bool, bool)) -> &'static str {
+    let compatible: Vec<&&str> = ZEN_PIECE_NAMES
+        .iter()
+        .filter(|name| {
+            let (entrances, _) = parse_zen_sides(name);
+            (last_exits.0 && entrances.0) || (last_exits.1 && entrances.1)
+        })
+        .collect();
+
+    if compatible.is_empty() {
+        // Fallback: pick any piece
+        ZEN_PIECE_NAMES[rng.random_range(0..ZEN_PIECE_NAMES.len())]
+    } else {
+        compatible[rng.random_range(0..compatible.len())]
+    }
+}
+
+/// Spawn a single zen piece as children of `level_entity`, offset vertically by `y_offset`.
+/// Returns the piece height in pixels.
+pub fn spawn_zen_piece(
+    commands: &mut Commands,
+    asset_server: &AssetServer,
+    level_entity: Entity,
+    name: &str,
+    y_offset: f32,
+) -> f32 {
+    let (data_str, csv_str, door_csv_str) = zen_level_data(name);
+    let data: LevelData = serde_json::from_str(data_str).expect("Failed to parse zen level data");
+
+    let piece_h = data.height;
+
+    // Parse walls
+    let mut grid: Vec<Vec<bool>> = Vec::new();
+    for line in csv_str.lines() {
+        if line.trim().is_empty() {
+            continue;
+        }
+        let row: Vec<bool> = line
+            .split(',')
+            .filter(|s| !s.trim().is_empty())
+            .map(|s| s.trim() == "1")
+            .collect();
+        grid.push(row);
+    }
+    grid.reverse();
+
+    let rects = merge_grid_to_rects(&grid);
+
+    // Parse doors
+    let mut door_grid: Vec<Vec<bool>> = Vec::new();
+    for line in door_csv_str.lines() {
+        if line.trim().is_empty() {
+            continue;
+        }
+        let row: Vec<bool> = line
+            .split(',')
+            .filter(|s| !s.trim().is_empty())
+            .map(|s| s.trim() == "1")
+            .collect();
+        door_grid.push(row);
+    }
+    door_grid.reverse();
+    let door_rects = merge_grid_to_rects(&door_grid);
+
+    let center_x = data.width / 2.0;
+    let center_y = piece_h / 2.0 + y_offset;
+
+    commands.entity(level_entity).with_children(|parent| {
+        // Layer images
+        for (i, layer_file) in data.layers.iter().enumerate() {
+            let path = format!("levels/{}/{}", name, layer_file);
+            let tf = Transform::from_xyz(center_x, center_y, -10.0 + i as f32);
+            if layer_file == "Door.png" {
+                parent.spawn((
+                    DoorSprite,
+                    Sprite::from_image(asset_server.load(&path)),
+                    tf,
+                ));
+            } else {
+                parent.spawn((
+                    Sprite::from_image(asset_server.load(&path)),
+                    tf,
+                ));
+            }
+        }
+
+        // Wall colliders
+        for rect in &rects {
+            let w = (rect.right - rect.left + 1) as f32 * TILE;
+            let h = (rect.top - rect.bottom + 1) as f32 * TILE;
+            let cx = (rect.left + rect.right + 1) as f32 * TILE / 2.0;
+            let cy = (rect.bottom + rect.top + 1) as f32 * TILE / 2.0 + y_offset;
+
+            parent.spawn((
+                Wall,
+                Collider::rectangle(w, h),
+                RigidBody::Static,
+                Friction::new(0.0),
+                Transform::from_xyz(cx, cy, 0.0),
+                Visibility::Hidden,
+            ));
+        }
+
+        // Door colliders
+        for rect in &door_rects {
+            let w = (rect.right - rect.left + 1) as f32 * TILE;
+            let h = (rect.top - rect.bottom + 1) as f32 * TILE;
+            let cx = (rect.left + rect.right + 1) as f32 * TILE / 2.0;
+            let cy = (rect.bottom + rect.top + 1) as f32 * TILE / 2.0 + y_offset;
+
+            parent.spawn((
+                DoorWall,
+                Wall,
+                Collider::rectangle(w, h),
+                RigidBody::Static,
+                Friction::new(0.0),
+                Transform::from_xyz(cx, cy, 0.0),
+                Visibility::Hidden,
+            ));
+        }
+    });
+
+    piece_h
+}
+
+/// Build the initial zen world: spawn Zen_bottom + a buffer of pieces ahead.
+/// Returns (spawn_point, level_entity, frontier_y, last_exits, rng).
+pub fn build_zen_world(
+    commands: &mut Commands,
+    asset_server: &AssetServer,
+    seed: u64,
+) -> (Vec2, Entity, f32, (bool, bool), StdRng) {
+    let mut rng = StdRng::seed_from_u64(seed);
+
+    let level_entity = commands
+        .spawn((
+            LevelEntity,
+            Transform::default(),
+            Visibility::default(),
+        ))
+        .id();
+
+    // Spawn Zen_bottom at y=0
+    let bottom_h = spawn_zen_piece(commands, asset_server, level_entity, "Zen_bottom", 0.0);
+
+    // Get spawn point from Zen_bottom data
+    let (data_str, _, _) = zen_level_data("Zen_bottom");
+    let data: LevelData = serde_json::from_str(data_str).unwrap();
+    let sp = if let Some(ps) = data.entities.player_spawn.first() {
+        // LDtk y-down to Bevy y-up
+        Vec2::new(ps.x + ps.width / 2.0, bottom_h - ps.y - ps.height / 2.0)
+    } else {
+        Vec2::new(320.0, TILE * 3.0)
+    };
+
+    let mut frontier_y = bottom_h;
+    let mut last_exits = (true, true); // Zen_bottom is open on both sides
+
+    // Pre-generate 8 pieces ahead
+    for _ in 0..8 {
+        let piece_name = pick_zen_piece(&mut rng, last_exits);
+        let (_, exits) = parse_zen_sides(piece_name);
+        let piece_h = spawn_zen_piece(commands, asset_server, level_entity, piece_name, frontier_y);
+        frontier_y += piece_h;
+        last_exits = exits;
+    }
+
+    info!("Built zen world (seed {}, frontier at {})", seed, frontier_y);
+
+    (sp, level_entity, frontier_y, last_exits, rng)
 }
 
 fn key_pickup(

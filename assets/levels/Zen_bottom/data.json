@@ -1,0 +1,31 @@
+{
+	"identifier": "Zen_bottom",
+	"uniqueIdentifer": "9d21a280-fa90-11f0-9c43-37eaf30cf573",
+	"x": -1,
+	"y": -1,
+	"width": 640,
+	"height": 128,
+	"bgColor": "#222225",
+	"neighbourLevels": [],
+	"customFields" : {},
+	"layers": [
+		"Background.png",
+		"Walls.png",
+		"Door.png"
+	],
+	"entities": {
+		"PlayerSpawn": [
+			{
+				"id": "PlayerSpawn",
+				"iid": "daf126d0-fa90-11f0-9c43-7503479d8eaf",
+				"layer": "Entities",
+				"x": 320,
+				"y": 64,
+				"width": 16,
+				"height": 16,
+				"color": 6539085,
+				"customFields" : {}
+			}
+		]
+	}
+}

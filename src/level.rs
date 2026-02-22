@@ -2,6 +2,7 @@ use std::collections::HashMap;
 
 use avian2d::prelude::*;
 use bevy::prelude::*;
+use rand::rngs::StdRng;
 
 use crate::ldtk::{self, CurrentLevel};
 use crate::net::SubmissionData;
@@ -52,6 +53,14 @@ pub struct ZenRun {
     pub max_height: f32,
 }
 
+#[derive(Resource)]
+pub struct ZenGenerator {
+    pub rng: StdRng,
+    pub frontier_y: f32,
+    pub last_exits: (bool, bool),
+    pub level_entity: Entity,
+}
+
 pub struct LevelPlugin;
 
 impl Plugin for LevelPlugin {
@@ -72,6 +81,10 @@ impl Plugin for LevelPlugin {
             .add_systems(
                 Update,
                 regenerate_level.run_if(in_state(GamePhase::Playing)),
+            )
+            .add_systems(
+                Update,
+                zen_generate_ahead.run_if(in_state(GamePhase::Playing)),
             );
     }
 }
@@ -218,52 +231,6 @@ pub fn build_level(
     Vec2::new(sp_x, sp_y)
 }
 
-/// Generates a tall zen level with no checkpoint and no ceiling.
-pub fn build_zen_level(
-    commands: &mut Commands,
-    seed: u64,
-) -> Vec2 {
-    let (grid, grid_h) = pieces::select_and_layout_zen(seed);
-
-    let rects = merge_grid_to_rects(&grid);
-
-    let level_entity = commands
-        .spawn((
-            LevelEntity,
-            Transform::default(),
-            Visibility::default(),
-        ))
-        .id();
-
-    commands.entity(level_entity).with_children(|parent| {
-        for rect in &rects {
-            let w = (rect.right - rect.left + 1) as f32 * TILE;
-            let h = (rect.top - rect.bottom + 1) as f32 * TILE;
-            let cx = (rect.left + rect.right + 1) as f32 * TILE / 2.0;
-            let cy = (rect.bottom + rect.top + 1) as f32 * TILE / 2.0;
-
-            parent.spawn((
-                Wall,
-                Collider::rectangle(w, h),
-                RigidBody::Static,
-                Friction::new(0.0),
-                Sprite::from_color(
-                    Color::srgb(0.55, 0.35, 0.2),
-                    Vec2::new(w, h),
-                ),
-                Transform::from_xyz(cx, cy, 0.0),
-            ));
-        }
-    });
-
-    let sp_x = (GRID_W as f32 / 2.0) * TILE;
-    let sp_y = (3.0 + 1.5) * TILE;
-
-    info!("Generated zen level ({}x{} grid, seed {})", GRID_W, grid_h, seed);
-
-    Vec2::new(sp_x, sp_y)
-}
-
 fn generate_level(
     mut commands: Commands,
     asset_server: Res<AssetServer>,
@@ -292,7 +259,18 @@ fn generate_level(
                 .unwrap_or_default()
                 .as_nanos() as u64;
             level_seed.0 = seed;
-            build_zen_level(&mut commands, seed)
+
+            let (sp, level_entity, frontier_y, last_exits, rng) =
+                ldtk::build_zen_world(&mut commands, &asset_server, seed);
+
+            commands.insert_resource(ZenGenerator {
+                rng,
+                frontier_y,
+                last_exits,
+                level_entity,
+            });
+
+            sp
         }
     };
 
@@ -390,5 +368,40 @@ fn checkpoint_collision(
             next_state.set(GamePhase::LevelComplete);
             return;
         }
+    }
+}
+
+const ZEN_BUFFER_PX: f32 = 128.0 * 8.0; // Generate 8 piece-heights ahead
+
+fn zen_generate_ahead(
+    mut commands: Commands,
+    asset_server: Res<AssetServer>,
+    game_mode: Res<GameMode>,
+    player_query: Query<&Transform, With<Player>>,
+    zen_gen: Option<ResMut<ZenGenerator>>,
+) {
+    if *game_mode != GameMode::Zen {
+        return;
+    }
+    let Some(mut gen) = zen_gen else { return };
+
+    let player_y = player_query
+        .iter()
+        .next()
+        .map(|tf| tf.translation.y)
+        .unwrap_or(0.0);
+
+    while gen.frontier_y < player_y + ZEN_BUFFER_PX {
+        let piece_name = ldtk::pick_zen_piece(&mut gen.rng, gen.last_exits);
+        let (_, exits) = ldtk::parse_zen_sides(piece_name);
+        let piece_h = ldtk::spawn_zen_piece(
+            &mut commands,
+            &asset_server,
+            gen.level_entity,
+            piece_name,
+            gen.frontier_y,
+        );
+        gen.frontier_y += piece_h;
+        gen.last_exits = exits;
     }
 }
