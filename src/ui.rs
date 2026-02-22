@@ -5,6 +5,7 @@ use crate::level::{GameMode, GamePhase, LevelEntity};
 use crate::net::{NetStatus, OnlineLeaderboard, PendingReplayFetch, ReplayFetchStatus};
 use crate::player::Player;
 use crate::replay::{FrameInput, ReplayData};
+use crate::username::ForceNameEntry;
 
 // --- Resources ---
 
@@ -177,7 +178,7 @@ fn clear_leaderboard_visible(mut visible: ResMut<LeaderboardVisible>) {
 
 // --- Title screen ---
 
-const TITLE_OPTIONS: &[&str] = &["Levels", "Zen Mode", "Quit"];
+const TITLE_OPTIONS: &[&str] = &["Levels", "Zen Mode", "Change Name", "Quit"];
 
 fn spawn_title_screen(mut commands: Commands, mut title_sel: ResMut<TitleSelection>) {
     title_sel.0 = 0;
@@ -291,6 +292,7 @@ fn title_screen_input(
     mut commands: Commands,
     existing: Query<Entity, With<TitleScreenUi>>,
     mut exit: MessageWriter<AppExit>,
+    mut force_name: ResMut<ForceNameEntry>,
 ) {
     let gamepad = gamepads.iter().next();
     let max_idx = TITLE_OPTIONS.len().saturating_sub(1);
@@ -337,6 +339,11 @@ fn title_screen_input(
                 next_state.set(GamePhase::Generating);
             }
             2 => {
+                // Change Name
+                force_name.0 = true;
+                next_state.set(GamePhase::NameEntry);
+            }
+            3 => {
                 // Quit
                 exit.write(AppExit::Success);
             }
@@ -1026,16 +1033,10 @@ fn spawn_leaderboard(
 ) {
     let use_online = !online_leaderboard.entries.is_empty();
 
-    // Compute placement for last run
+    // Compute placement for last run among all personal runs
     let placement = last_time.map(|t| {
-        if use_online {
-            let times: Vec<f32> = online_leaderboard.entries.iter().map(|e| e.time).collect();
-            let pos = times.iter().position(|&lt| t <= lt).unwrap_or(times.len());
-            pos + 1
-        } else {
-            let pos = local_leaderboard.all_times.partition_point(|&lt| lt < t);
-            pos + 1
-        }
+        let pos = local_leaderboard.all_times.partition_point(|&lt| lt < t);
+        pos + 1
     });
 
     commands

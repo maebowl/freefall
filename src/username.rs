@@ -13,11 +13,15 @@ struct NameEntryUi;
 #[derive(Resource, Default)]
 struct NameBuffer(String);
 
+#[derive(Resource, Default)]
+pub struct ForceNameEntry(pub bool);
+
 pub struct UsernamePlugin;
 
 impl Plugin for UsernamePlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<NameBuffer>()
+            .init_resource::<ForceNameEntry>()
             .add_systems(OnEnter(GamePhase::NameEntry), check_saved_name)
             .add_systems(OnExit(GamePhase::NameEntry), despawn_name_entry_ui)
             .add_systems(
@@ -52,7 +56,16 @@ fn check_saved_name(
     mut commands: Commands,
     mut next_state: ResMut<NextState<GamePhase>>,
     mut name_buf: ResMut<NameBuffer>,
+    mut force: ResMut<ForceNameEntry>,
 ) {
+    if force.0 {
+        // Forced name change — pre-fill with current name
+        force.0 = false;
+        let current = load_saved_name().unwrap_or_default();
+        name_buf.0 = current.clone();
+        spawn_name_entry_ui(&mut commands, &current);
+        return;
+    }
     if let Some(name) = load_saved_name() {
         if !name.is_empty() {
             commands.insert_resource(PlayerName(name));
