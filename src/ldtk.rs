@@ -29,7 +29,7 @@ impl Plugin for LdtkPlugin {
     }
 }
 
-pub const LEVEL_ORDER: &[&str] = &["Level_1", "Level_2"];
+pub const LEVEL_ORDER: &[&str] = &["Level_1", "Level_3", "Level_4"];
 
 #[derive(Resource)]
 pub struct CurrentLevel(pub usize);
@@ -90,10 +90,15 @@ fn level_data(name: &str) -> (&'static str, &'static str, &'static str) {
             include_str!("../assets/levels/Level_1/Walls.csv"),
             include_str!("../assets/levels/Level_1/Door.csv"),
         ),
-        "Level_2" => (
-            include_str!("../assets/levels/Level_2/data.json"),
-            include_str!("../assets/levels/Level_2/Walls.csv"),
-            include_str!("../assets/levels/Level_2/Door.csv"),
+        "Level_3" => (
+            include_str!("../assets/levels/Level_3/data.json"),
+            include_str!("../assets/levels/Level_3/Walls.csv"),
+            include_str!("../assets/levels/Level_3/Door.csv"),
+        ),
+        "Level_4" => (
+            include_str!("../assets/levels/Level_4/data.json"),
+            include_str!("../assets/levels/Level_4/Walls.csv"),
+            include_str!("../assets/levels/Level_4/Door.csv"),
         ),
         _ => panic!("Unknown level: {name}"),
     }

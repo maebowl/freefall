@@ -1,0 +1,31 @@
+{
+	"identifier": "Level_1",
+	"uniqueIdentifer": "e41950e0-fa90-11f0-9c43-0d873be7b2be",
+	"x": -1,
+	"y": -1,
+	"width": 640,
+	"height": 640,
+	"bgColor": "#222225",
+	"neighbourLevels": [],
+	"customFields" : {},
+	"layers": [
+		"Background.png",
+		"Walls.png",
+		"Door.png"
+	],
+	"entities": {
+		"PlayerSpawn": [
+			{
+				"id": "PlayerSpawn",
+				"iid": "3375ef90-fa90-11f0-9c43-9944c6c4a9cd",
+				"layer": "Entities",
+				"x": 112,
+				"y": 576,
+				"width": 16,
+				"height": 16,
+				"color": 6539085,
+				"customFields" : {}
+			}
+		]
+	}
+}
