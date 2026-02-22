@@ -220,7 +220,7 @@ fn generate_level(
 ) {
     let sp = match *game_mode {
         GameMode::Levels => {
-            let sp = ldtk::build_ldtk_level(&mut commands);
+            let sp = ldtk::build_ldtk_level(&mut commands, &asset_server);
             level_seed.0 = 0;
             sp
         }

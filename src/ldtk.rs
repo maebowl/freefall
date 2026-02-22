@@ -10,6 +10,7 @@ const LEVEL_PX: f32 = 640.0;
 
 #[derive(Deserialize)]
 struct LevelData {
+    layers: Vec<String>,
     entities: Entities,
 }
 
@@ -36,7 +37,7 @@ fn ldtk_to_bevy(x: f32, y: f32, w: f32, h: f32) -> Vec2 {
     Vec2::new(x + w / 2.0, LEVEL_PX - y - h / 2.0)
 }
 
-pub fn build_ldtk_level(commands: &mut Commands) -> Vec2 {
+pub fn build_ldtk_level(commands: &mut Commands, asset_server: &AssetServer) -> Vec2 {
     // Load and parse data.json
     let data_str = include_str!("../assets/levels/Mosaic_demo/data.json");
     let data: LevelData = serde_json::from_str(data_str).expect("Failed to parse LDtk data.json");
@@ -70,8 +71,20 @@ pub fn build_ldtk_level(commands: &mut Commands) -> Vec2 {
         ))
         .id();
 
+    // Level center for sprite positioning
+    let center = Vec3::new(LEVEL_PX / 2.0, LEVEL_PX / 2.0, 0.0);
+
     commands.entity(level_entity).with_children(|parent| {
-        // Spawn wall colliders
+        // Spawn layer images (Background.png, Walls.png) as sprites
+        for (i, layer_file) in data.layers.iter().enumerate() {
+            let path = format!("levels/Mosaic_demo/{}", layer_file);
+            parent.spawn((
+                Sprite::from_image(asset_server.load(&path)),
+                Transform::from_translation(center + Vec3::Z * i as f32),
+            ));
+        }
+
+        // Spawn invisible wall colliders (visuals come from layer PNGs)
         for rect in &rects {
             let w = (rect.right - rect.left + 1) as f32 * TILE;
             let h = (rect.top - rect.bottom + 1) as f32 * TILE;
@@ -83,15 +96,12 @@ pub fn build_ldtk_level(commands: &mut Commands) -> Vec2 {
                 Collider::rectangle(w, h),
                 RigidBody::Static,
                 Friction::new(0.0),
-                Sprite::from_color(
-                    Color::srgb(0.55, 0.35, 0.2),
-                    Vec2::new(w, h),
-                ),
                 Transform::from_xyz(cx, cy, 0.0),
+                Visibility::Hidden,
             ));
         }
 
-        // Spawn checkpoints
+        // Spawn checkpoint sensors (semi-transparent so tileset shows through)
         for cp in &data.entities.checkpoint {
             let pos = ldtk_to_bevy(cp.x, cp.y, cp.width, cp.height);
             parent.spawn((
@@ -100,10 +110,10 @@ pub fn build_ldtk_level(commands: &mut Commands) -> Vec2 {
                 Sensor,
                 RigidBody::Static,
                 Sprite::from_color(
-                    Color::srgb(0.2, 0.9, 0.3),
+                    Color::srgba(0.2, 0.9, 0.3, 0.4),
                     Vec2::new(cp.width, cp.height),
                 ),
-                Transform::from_xyz(pos.x, pos.y, 1.0),
+                Transform::from_xyz(pos.x, pos.y, 5.0),
             ));
         }
     });
