@@ -3,6 +3,7 @@ use std::sync::{mpsc, Mutex};
 use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
 
+use crate::ldtk::CurrentLevel;
 use crate::level::{GameMode, GamePhase};
 use crate::replay::{FrameInput, ReplayData};
 
@@ -122,32 +123,24 @@ impl Plugin for NetPlugin {
     }
 }
 
-// --- Current level name helper ---
-
-pub fn current_level_name(mode: &GameMode) -> Option<&'static str> {
-    match mode {
-        GameMode::Levels => Some("Mosaic_demo"),
-        GameMode::Zen => None,
-    }
-}
-
 // --- Leaderboard fetch ---
 
 fn trigger_fetch_leaderboard(
     mut commands: Commands,
     mut leaderboard: ResMut<OnlineLeaderboard>,
     game_mode: Res<GameMode>,
+    current_level: Res<CurrentLevel>,
 ) {
-    let Some(level) = current_level_name(&game_mode) else {
+    if *game_mode == GameMode::Zen {
         leaderboard.entries.clear();
         leaderboard.status = NetStatus::Idle;
         return;
-    };
+    }
     leaderboard.status = NetStatus::Fetching;
     let (tx, rx) = mpsc::channel();
     commands.insert_resource(LeaderboardReceiver(Mutex::new(rx)));
 
-    let level = level.to_string();
+    let level = current_level.name().to_string();
     std::thread::spawn(move || {
         let result = fetch_leaderboard_http(&level);
         let _ = tx.send(result);
@@ -160,16 +153,17 @@ fn periodic_refresh(
     mut timer: ResMut<RefreshTimer>,
     time: Res<Time>,
     game_mode: Res<GameMode>,
+    current_level: Res<CurrentLevel>,
 ) {
     timer.0.tick(time.delta());
     if timer.0.just_finished() && leaderboard.status != NetStatus::Fetching {
-        let Some(level) = current_level_name(&game_mode) else {
+        if *game_mode == GameMode::Zen {
             return;
-        };
+        }
         leaderboard.status = NetStatus::Fetching;
         let (tx, rx) = mpsc::channel();
         commands.insert_resource(LeaderboardReceiver(Mutex::new(rx)));
-        let level = level.to_string();
+        let level = current_level.name().to_string();
         std::thread::spawn(move || {
             let result = fetch_leaderboard_http(&level);
             let _ = tx.send(result);
@@ -268,17 +262,18 @@ fn poll_submit_response(
     receiver: Option<Res<SubmitReceiver>>,
     mut leaderboard: ResMut<OnlineLeaderboard>,
     game_mode: Res<GameMode>,
+    current_level: Res<CurrentLevel>,
 ) {
     let Some(receiver) = receiver else { return };
     let rx = receiver.0.lock().unwrap();
     match rx.try_recv() {
         Ok(Ok(())) => {
             // Re-fetch leaderboard after successful submission
-            if let Some(level) = current_level_name(&game_mode) {
+            if *game_mode == GameMode::Levels {
                 leaderboard.status = NetStatus::Fetching;
                 let (tx, rx) = mpsc::channel();
                 commands.insert_resource(LeaderboardReceiver(Mutex::new(rx)));
-                let level = level.to_string();
+                let level = current_level.name().to_string();
                 std::thread::spawn(move || {
                     let result = fetch_leaderboard_http(&level);
                     let _ = tx.send(result);
@@ -299,16 +294,15 @@ fn handle_fetch_replay(
     mut commands: Commands,
     mut pending: ResMut<PendingReplayFetch>,
     mut status: ResMut<ReplayFetchStatus>,
-    game_mode: Res<GameMode>,
+    current_level: Res<CurrentLevel>,
 ) {
     let Some(index) = pending.0.take() else { return };
-    let Some(level) = current_level_name(&game_mode) else { return };
     status.loading = true;
+    let level = current_level.name().to_string();
 
     let (tx, rx) = mpsc::channel();
     commands.insert_resource(ReplayReceiver(Mutex::new(rx)));
 
-    let level = level.to_string();
     std::thread::spawn(move || {
         let result = fetch_replay_http(index, &level);
         let _ = tx.send(result);

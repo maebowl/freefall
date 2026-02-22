@@ -8,6 +8,33 @@ use crate::walls::Wall;
 const TILE: f32 = 16.0;
 const LEVEL_PX: f32 = 640.0;
 
+pub const LEVEL_ORDER: &[&str] = &["Mosaic_demo", "World_Level_1"];
+
+#[derive(Resource)]
+pub struct CurrentLevel(pub usize);
+
+impl Default for CurrentLevel {
+    fn default() -> Self {
+        Self(0)
+    }
+}
+
+impl CurrentLevel {
+    pub fn name(&self) -> &'static str {
+        LEVEL_ORDER[self.0]
+    }
+
+    /// Advance to next level. Returns true if there is a next level.
+    pub fn advance(&mut self) -> bool {
+        if self.0 + 1 < LEVEL_ORDER.len() {
+            self.0 += 1;
+            true
+        } else {
+            false
+        }
+    }
+}
+
 #[derive(Deserialize)]
 struct LevelData {
     layers: Vec<String>,
@@ -32,18 +59,31 @@ struct EntityEntry {
     height: f32,
 }
 
+fn level_data(name: &str) -> (&'static str, &'static str) {
+    match name {
+        "Mosaic_demo" => (
+            include_str!("../assets/levels/Mosaic_demo/data.json"),
+            include_str!("../assets/levels/Mosaic_demo/Walls.csv"),
+        ),
+        "World_Level_1" => (
+            include_str!("../assets/levels/World_Level_1/data.json"),
+            include_str!("../assets/levels/World_Level_1/Walls.csv"),
+        ),
+        _ => panic!("Unknown level: {name}"),
+    }
+}
+
 /// Convert LDtk y-down position (top-left origin) to Bevy y-up center position.
 fn ldtk_to_bevy(x: f32, y: f32, w: f32, h: f32) -> Vec2 {
     Vec2::new(x + w / 2.0, LEVEL_PX - y - h / 2.0)
 }
 
-pub fn build_ldtk_level(commands: &mut Commands, asset_server: &AssetServer) -> Vec2 {
-    // Load and parse data.json
-    let data_str = include_str!("../assets/levels/Mosaic_demo/data.json");
+pub fn build_ldtk_level(commands: &mut Commands, asset_server: &AssetServer, level_name: &str) -> Vec2 {
+    let (data_str, csv_str) = level_data(level_name);
+
     let data: LevelData = serde_json::from_str(data_str).expect("Failed to parse LDtk data.json");
 
-    // Load and parse Walls.csv into a bool grid
-    let csv_str = include_str!("../assets/levels/Mosaic_demo/Walls.csv");
+    // Parse Walls.csv into a bool grid
     let mut grid: Vec<Vec<bool>> = Vec::new();
     for line in csv_str.lines() {
         if line.trim().is_empty() {
@@ -75,9 +115,9 @@ pub fn build_ldtk_level(commands: &mut Commands, asset_server: &AssetServer) -> 
     let center = Vec3::new(LEVEL_PX / 2.0, LEVEL_PX / 2.0, 0.0);
 
     commands.entity(level_entity).with_children(|parent| {
-        // Spawn layer images (Background.png, Walls.png) behind gameplay sprites
+        // Spawn layer images behind gameplay sprites
         for (i, layer_file) in data.layers.iter().enumerate() {
-            let path = format!("levels/Mosaic_demo/{}", layer_file);
+            let path = format!("levels/{}/{}", level_name, layer_file);
             parent.spawn((
                 Sprite::from_image(asset_server.load(&path)),
                 Transform::from_translation(center + Vec3::new(0.0, 0.0, -10.0 + i as f32)),
@@ -101,7 +141,7 @@ pub fn build_ldtk_level(commands: &mut Commands, asset_server: &AssetServer) -> 
             ));
         }
 
-        // Spawn checkpoint sensors (semi-transparent so tileset shows through)
+        // Spawn checkpoint sensors
         for cp in &data.entities.checkpoint {
             let pos = ldtk_to_bevy(cp.x, cp.y, cp.width, cp.height);
             parent.spawn((
@@ -122,11 +162,10 @@ pub fn build_ldtk_level(commands: &mut Commands, asset_server: &AssetServer) -> 
     let sp = if let Some(ps) = data.entities.player_spawn.first() {
         ldtk_to_bevy(ps.x, ps.y, ps.width, ps.height)
     } else {
-        // Fallback: center bottom
         Vec2::new(LEVEL_PX / 2.0, TILE * 3.0)
     };
 
-    info!("Loaded LDtk level Mosaic_demo (spawn at {:?})", sp);
+    info!("Loaded LDtk level {} (spawn at {:?})", level_name, sp);
 
     sp
 }

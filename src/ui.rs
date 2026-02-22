@@ -1,5 +1,6 @@
 use bevy::prelude::*;
 
+use crate::ldtk::CurrentLevel;
 use crate::level::{GameMode, GamePhase};
 use crate::net::{NetStatus, OnlineLeaderboard, PendingReplayFetch, ReplayFetchStatus};
 use crate::replay::{FrameInput, ReplayData};
@@ -207,6 +208,7 @@ fn title_screen_input(
     gamepads: Query<&Gamepad>,
     mut next_state: ResMut<NextState<GamePhase>>,
     mut game_mode: ResMut<GameMode>,
+    mut current_level: ResMut<CurrentLevel>,
 ) {
     let gp_start = gamepads.iter().next().is_some_and(|g| {
         g.just_pressed(GamepadButton::South) || g.just_pressed(GamepadButton::Start)
@@ -214,6 +216,7 @@ fn title_screen_input(
 
     if keys.just_pressed(KeyCode::Digit1) || keys.just_pressed(KeyCode::Space) || keys.just_pressed(KeyCode::Enter) || gp_start {
         *game_mode = GameMode::Levels;
+        current_level.0 = 0;
         next_state.set(GamePhase::Generating);
     } else if keys.just_pressed(KeyCode::Digit2) {
         *game_mode = GameMode::Zen;

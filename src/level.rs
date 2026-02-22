@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use avian2d::prelude::*;
 use bevy::prelude::*;
 
-use crate::ldtk;
+use crate::ldtk::{self, CurrentLevel};
 use crate::net::{PendingSubmission, SubmissionData};
 use crate::pieces;
 use crate::player::{spawn_player, Player};
@@ -50,6 +50,7 @@ impl Plugin for LevelPlugin {
     fn build(&self, app: &mut App) {
         app.init_state::<GamePhase>()
             .init_resource::<GameMode>()
+            .init_resource::<CurrentLevel>()
             .insert_resource(LevelSeed(0))
             .insert_resource(SpawnPoint(Vec2::ZERO))
             .add_systems(OnEnter(GamePhase::Generating), generate_level)
@@ -217,10 +218,11 @@ fn generate_level(
     mut level_seed: ResMut<LevelSeed>,
     mut recorder: ResMut<ReplayRecorder>,
     game_mode: Res<GameMode>,
+    current_level: Res<CurrentLevel>,
 ) {
     let sp = match *game_mode {
         GameMode::Levels => {
-            let sp = ldtk::build_ldtk_level(&mut commands, &asset_server);
+            let sp = ldtk::build_ldtk_level(&mut commands, &asset_server, current_level.name());
             level_seed.0 = 0;
             sp
         }
@@ -291,6 +293,7 @@ fn checkpoint_collision(
     recorder: Res<ReplayRecorder>,
     mut pending: ResMut<PendingSubmission>,
     game_mode: Res<GameMode>,
+    mut current_level: ResMut<CurrentLevel>,
 ) {
     let Ok(player) = player_query.single() else {
         return;
@@ -298,12 +301,11 @@ fn checkpoint_collision(
 
     for checkpoint in &checkpoint_query {
         if collisions.contains(player, checkpoint) {
-            // Stop timer and record time (only submit in Levels mode)
             if timer.final_time.is_none() {
                 timer.running = false;
                 timer.final_time = Some(timer.elapsed);
 
-                if let Some(level_name) = crate::net::current_level_name(&game_mode) {
+                if *game_mode == GameMode::Levels {
                     leaderboard.add_entry(
                         timer.elapsed,
                         recorder.seed,
@@ -313,10 +315,16 @@ fn checkpoint_collision(
                         time: timer.elapsed,
                         seed: recorder.seed,
                         inputs: recorder.frames.clone(),
-                        level: level_name.to_string(),
+                        level: current_level.name().to_string(),
                     });
                 }
             }
+
+            // In Levels mode, advance to next level
+            if *game_mode == GameMode::Levels {
+                current_level.advance();
+            }
+
             next_state.set(GamePhase::Transitioning);
             return;
         }
