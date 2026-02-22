@@ -686,11 +686,9 @@ fn pause_menu_input(
     mut lb_selection: ResMut<LeaderboardSelection>,
     local_leaderboard: Res<Leaderboard>,
     online_leaderboard: Res<OnlineLeaderboard>,
-    mut replay_data: ResMut<ReplayData>,
-    mut pending_replay: ResMut<PendingReplayFetch>,
+    (mut replay_data, mut pending_replay): (ResMut<ReplayData>, ResMut<PendingReplayFetch>),
     replay_status: Res<ReplayFetchStatus>,
-    mut zen_leaderboard: ResMut<ZenLeaderboard>,
-    zen_run: Res<ZenRun>,
+    (mut zen_leaderboard, zen_run): (ResMut<ZenLeaderboard>, Res<ZenRun>),
 ) {
     let gamepad = gamepads.iter().next();
 
