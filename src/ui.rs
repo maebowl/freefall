@@ -731,8 +731,9 @@ fn spawn_level_complete(
     current_level: Res<CurrentLevel>,
     online_leaderboard: Res<OnlineLeaderboard>,
 ) {
-    sel.0 = 0;
     let has_next = *game_mode == GameMode::Levels && current_level.0 + 1 < LEVEL_ORDER.len();
+    // Default to "Restart"
+    sel.0 = if has_next { 1 } else { 0 };
 
     let is_wr = timer.final_time.is_some_and(|t| {
         if online_leaderboard.entries.is_empty() {

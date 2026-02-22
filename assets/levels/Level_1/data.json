@@ -10,7 +10,8 @@
 	"customFields" : {},
 	"layers": [
 		"Background.png",
-		"Walls.png"
+		"Walls.png",
+		"Door.png"
 	],
 	"entities": {
 		"Checkpoint": [
@@ -59,10 +60,23 @@
 				"customFields" : {}
 			}
 		],
+		"Key": [
+			{
+				"id": "Key",
+				"iid": "069cb620-fa90-11f0-9c43-31b56269de31",
+				"layer": "Entities",
+				"x": 512,
+				"y": 80,
+				"width": 16,
+				"height": 16,
+				"color": 12470831,
+				"customFields" : {}
+			}
+		],
 		"PlayerSpawn": [
 			{
 				"id": "PlayerSpawn",
-				"iid": "b9ddca90-fa90-11f0-9c43-e13e1670c20d",
+				"iid": "20d984e0-fa90-11f0-9c43-fb587a287d87",
 				"layer": "Entities",
 				"x": 112,
 				"y": 576,

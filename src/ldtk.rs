@@ -2,11 +2,32 @@ use avian2d::prelude::*;
 use bevy::prelude::*;
 use serde::Deserialize;
 
-use crate::level::{merge_grid_to_rects, Checkpoint, LevelEntity};
+use crate::level::{merge_grid_to_rects, Checkpoint, GamePhase, LevelEntity};
+use crate::player::Player;
 use crate::walls::Wall;
 
 const TILE: f32 = 16.0;
 const LEVEL_PX: f32 = 640.0;
+
+#[derive(Component)]
+pub struct KeyPickup;
+
+#[derive(Component)]
+pub struct DoorWall;
+
+#[derive(Component)]
+pub struct DoorSprite;
+
+pub struct LdtkPlugin;
+
+impl Plugin for LdtkPlugin {
+    fn build(&self, app: &mut App) {
+        app.add_systems(
+            Update,
+            key_pickup.run_if(in_state(GamePhase::Playing)),
+        );
+    }
+}
 
 pub const LEVEL_ORDER: &[&str] = &["Level_1", "Level_2"];
 
@@ -49,6 +70,9 @@ struct Entities {
     #[serde(default)]
     #[serde(rename = "Checkpoint")]
     checkpoint: Vec<EntityEntry>,
+    #[serde(default)]
+    #[serde(rename = "Key")]
+    key: Vec<EntityEntry>,
 }
 
 #[derive(Deserialize)]
@@ -59,15 +83,17 @@ struct EntityEntry {
     height: f32,
 }
 
-fn level_data(name: &str) -> (&'static str, &'static str) {
+fn level_data(name: &str) -> (&'static str, &'static str, &'static str) {
     match name {
         "Level_1" => (
             include_str!("../assets/levels/Level_1/data.json"),
             include_str!("../assets/levels/Level_1/Walls.csv"),
+            include_str!("../assets/levels/Level_1/Door.csv"),
         ),
         "Level_2" => (
             include_str!("../assets/levels/Level_2/data.json"),
             include_str!("../assets/levels/Level_2/Walls.csv"),
+            include_str!("../assets/levels/Level_2/Door.csv"),
         ),
         _ => panic!("Unknown level: {name}"),
     }
@@ -79,7 +105,7 @@ fn ldtk_to_bevy(x: f32, y: f32, w: f32, h: f32) -> Vec2 {
 }
 
 pub fn build_ldtk_level(commands: &mut Commands, asset_server: &AssetServer, level_name: &str) -> Vec2 {
-    let (data_str, csv_str) = level_data(level_name);
+    let (data_str, csv_str, door_csv_str) = level_data(level_name);
 
     let data: LevelData = serde_json::from_str(data_str).expect("Failed to parse LDtk data.json");
 
@@ -156,6 +182,65 @@ pub fn build_ldtk_level(commands: &mut Commands, asset_server: &AssetServer, lev
                 Transform::from_xyz(pos.x, pos.y, 5.0),
             ));
         }
+
+        // Parse and spawn door colliders
+        let mut door_grid: Vec<Vec<bool>> = Vec::new();
+        for line in door_csv_str.lines() {
+            if line.trim().is_empty() {
+                continue;
+            }
+            let row: Vec<bool> = line
+                .split(',')
+                .filter(|s| !s.trim().is_empty())
+                .map(|s| s.trim() == "1")
+                .collect();
+            door_grid.push(row);
+        }
+        door_grid.reverse();
+
+        let door_rects = merge_grid_to_rects(&door_grid);
+        for rect in &door_rects {
+            let w = (rect.right - rect.left + 1) as f32 * TILE;
+            let h = (rect.top - rect.bottom + 1) as f32 * TILE;
+            let cx = (rect.left + rect.right + 1) as f32 * TILE / 2.0;
+            let cy = (rect.bottom + rect.top + 1) as f32 * TILE / 2.0;
+
+            parent.spawn((
+                DoorWall,
+                Wall,
+                Collider::rectangle(w, h),
+                RigidBody::Static,
+                Friction::new(0.0),
+                Transform::from_xyz(cx, cy, 0.0),
+                Visibility::Hidden,
+            ));
+        }
+
+        // Spawn Door.png sprite (visual layer for doors)
+        if door_rects.len() > 0 {
+            let door_path = format!("levels/{}/Door.png", level_name);
+            parent.spawn((
+                DoorSprite,
+                Sprite::from_image(asset_server.load(&door_path)),
+                Transform::from_translation(center + Vec3::new(0.0, 0.0, -7.0)),
+            ));
+        }
+
+        // Spawn key pickups
+        for key in &data.entities.key {
+            let pos = ldtk_to_bevy(key.x, key.y, key.width, key.height);
+            parent.spawn((
+                KeyPickup,
+                Collider::rectangle(key.width * 1.5, key.height * 1.5),
+                Sensor,
+                RigidBody::Static,
+                Sprite::from_color(
+                    Color::srgb(1.0, 0.85, 0.0),
+                    Vec2::new(key.width, key.height),
+                ),
+                Transform::from_xyz(pos.x, pos.y, 5.0),
+            ));
+        }
     });
 
     // Return spawn point from PlayerSpawn entity
@@ -168,4 +253,30 @@ pub fn build_ldtk_level(commands: &mut Commands, asset_server: &AssetServer, lev
     info!("Loaded LDtk level {} (spawn at {:?})", level_name, sp);
 
     sp
+}
+
+fn key_pickup(
+    mut commands: Commands,
+    collisions: Collisions,
+    player_query: Query<Entity, With<Player>>,
+    key_query: Query<Entity, With<KeyPickup>>,
+    door_query: Query<Entity, With<DoorWall>>,
+    door_sprite_query: Query<Entity, With<DoorSprite>>,
+) {
+    let Ok(player) = player_query.single() else {
+        return;
+    };
+
+    for key in &key_query {
+        if collisions.contains(player, key) {
+            commands.entity(key).despawn();
+            for door in &door_query {
+                commands.entity(door).despawn();
+            }
+            for sprite in &door_sprite_query {
+                commands.entity(sprite).despawn();
+            }
+            return;
+        }
+    }
 }

@@ -36,6 +36,7 @@ fn main() {
             replay::ReplayPlugin,
             net::NetPlugin,
             username::UsernamePlugin,
+            ldtk::LdtkPlugin,
         ))
         .add_systems(Startup, setup)
         .run();
