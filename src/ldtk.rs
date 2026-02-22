@@ -144,10 +144,19 @@ pub fn build_ldtk_level(commands: &mut Commands, asset_server: &AssetServer, lev
         // Spawn layer images behind gameplay sprites
         for (i, layer_file) in data.layers.iter().enumerate() {
             let path = format!("levels/{}/{}", level_name, layer_file);
-            parent.spawn((
-                Sprite::from_image(asset_server.load(&path)),
-                Transform::from_translation(center + Vec3::new(0.0, 0.0, -10.0 + i as f32)),
-            ));
+            let tf = Transform::from_translation(center + Vec3::new(0.0, 0.0, -10.0 + i as f32));
+            if layer_file == "Door.png" {
+                parent.spawn((
+                    DoorSprite,
+                    Sprite::from_image(asset_server.load(&path)),
+                    tf,
+                ));
+            } else {
+                parent.spawn((
+                    Sprite::from_image(asset_server.load(&path)),
+                    tf,
+                ));
+            }
         }
 
         // Spawn invisible wall colliders (visuals come from layer PNGs)
@@ -213,16 +222,6 @@ pub fn build_ldtk_level(commands: &mut Commands, asset_server: &AssetServer, lev
                 Friction::new(0.0),
                 Transform::from_xyz(cx, cy, 0.0),
                 Visibility::Hidden,
-            ));
-        }
-
-        // Spawn Door.png sprite (visual layer for doors)
-        if door_rects.len() > 0 {
-            let door_path = format!("levels/{}/Door.png", level_name);
-            parent.spawn((
-                DoorSprite,
-                Sprite::from_image(asset_server.load(&door_path)),
-                Transform::from_translation(center + Vec3::new(0.0, 0.0, -7.0)),
             ));
         }
 
