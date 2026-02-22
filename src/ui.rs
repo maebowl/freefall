@@ -56,6 +56,9 @@ struct LeaderboardVisible {
 }
 
 #[derive(Resource, Default)]
+pub struct LastRunTime(pub Option<f32>);
+
+#[derive(Resource, Default)]
 struct LeaderboardSelection(usize);
 
 #[derive(Resource, Default)]
@@ -113,6 +116,7 @@ impl Plugin for UiPlugin {
             .init_resource::<PauseSelection>()
             .init_resource::<TitleSelection>()
             .init_resource::<LevelCompleteSelection>()
+            .init_resource::<LastRunTime>()
             // Title screen
             .add_systems(OnEnter(GamePhase::TitleScreen), (spawn_title_screen, despawn_marked::<HudUi>, despawn_marked::<LeaderboardUi>, clear_leaderboard_visible))
             .add_systems(OnExit(GamePhase::TitleScreen), despawn_marked::<TitleScreenUi>)
@@ -489,11 +493,11 @@ fn spawn_pause_menu(
     mut pause_sel: ResMut<PauseSelection>,
     game_mode: Res<GameMode>,
     mut leaderboard_visible: ResMut<LeaderboardVisible>,
-    timer: Res<SpeedrunTimer>,
+    last_run: Res<LastRunTime>,
 ) {
     pause_sel.0 = 0;
     leaderboard_visible.visible = false;
-    leaderboard_visible.cached_time = timer.final_time;
+    leaderboard_visible.cached_time = last_run.0;
     rebuild_pause_menu_spawn(&mut commands, pause_sel.0, &game_mode);
 }
 

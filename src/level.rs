@@ -8,7 +8,7 @@ use crate::net::{PendingSubmission, SubmissionData};
 use crate::pieces;
 use crate::player::{spawn_player, Player};
 use crate::replay::ReplayRecorder;
-use crate::ui::{Leaderboard, SpeedrunTimer};
+use crate::ui::{LastRunTime, Leaderboard, SpeedrunTimer};
 use crate::walls::Wall;
 
 const TILE: f32 = 16.0;
@@ -297,6 +297,7 @@ fn checkpoint_collision(
     mut pending: ResMut<PendingSubmission>,
     game_mode: Res<GameMode>,
     current_level: Res<CurrentLevel>,
+    mut last_run: ResMut<LastRunTime>,
 ) {
     let Ok(player) = player_query.single() else {
         return;
@@ -307,6 +308,7 @@ fn checkpoint_collision(
             if timer.final_time.is_none() {
                 timer.running = false;
                 timer.final_time = Some(timer.elapsed);
+                last_run.0 = Some(timer.elapsed);
 
                 if *game_mode == GameMode::Levels {
                     leaderboard.add_entry(
