@@ -21,7 +21,6 @@ fn main() {
                     primary_window: Some(Window {
                         title: "Freefall".into(),
                         resolution: (1280, 720).into(),
-                        canvas: Some("#bevy".to_string()),
                         fit_canvas_to_parent: true,
                         prevent_default_event_handling: true,
                         ..default()
