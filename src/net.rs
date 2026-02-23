@@ -1,5 +1,3 @@
-use std::sync::{mpsc, Mutex};
-
 use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
 
@@ -64,37 +62,9 @@ pub struct SubmissionData {
 #[derive(Resource, Default)]
 pub struct PendingReplayFetch(pub Option<usize>);
 
-// --- Internal channel resources (Mutex for Sync) ---
-
-#[derive(Resource)]
-struct LeaderboardReceiver(Mutex<mpsc::Receiver<Result<Vec<OnlineEntry>, String>>>);
-
-#[derive(Resource)]
-struct SubmitReceiver(Mutex<mpsc::Receiver<Result<(), String>>>);
-
-#[derive(Resource)]
-struct ReplayReceiver(Mutex<mpsc::Receiver<Result<ReplayPayload, String>>>);
-
 #[derive(Resource, Default)]
 pub struct ReplayFetchStatus {
     pub loading: bool,
-}
-
-#[derive(Resource)]
-struct RefreshTimer(Timer);
-
-#[derive(Deserialize)]
-struct ReplayPayload {
-    #[serde(deserialize_with = "deserialize_seed")]
-    seed: u64,
-    inputs: Vec<FrameInput>,
-    #[serde(default)]
-    level: Option<String>,
-}
-
-#[derive(Deserialize)]
-struct SubmitResponse {
-    ok: bool,
 }
 
 // --- Plugin ---
@@ -106,26 +76,69 @@ impl Plugin for NetPlugin {
         app.init_resource::<OnlineLeaderboard>()
             .init_resource::<ReplayFetchStatus>()
             .init_resource::<PendingSubmission>()
-            .init_resource::<PendingReplayFetch>()
-            .insert_resource(RefreshTimer(Timer::from_seconds(10.0, TimerMode::Repeating)))
-            .add_systems(OnEnter(GamePhase::TitleScreen), trigger_fetch_leaderboard)
-            .add_systems(OnEnter(GamePhase::Generating), trigger_fetch_leaderboard)
-            .add_systems(
-                Update,
-                (
-                    poll_leaderboard_response,
-                    handle_submit_score,
-                    poll_submit_response,
-                    handle_fetch_replay,
-                    poll_replay_response,
-                    periodic_refresh,
-                ),
-            );
+            .init_resource::<PendingReplayFetch>();
+
+        #[cfg(not(target_family = "wasm"))]
+        {
+            app.insert_resource(RefreshTimer(Timer::from_seconds(10.0, TimerMode::Repeating)))
+                .add_systems(OnEnter(GamePhase::TitleScreen), trigger_fetch_leaderboard)
+                .add_systems(OnEnter(GamePhase::Generating), trigger_fetch_leaderboard)
+                .add_systems(
+                    Update,
+                    (
+                        poll_leaderboard_response,
+                        handle_submit_score,
+                        poll_submit_response,
+                        handle_fetch_replay,
+                        poll_replay_response,
+                        periodic_refresh,
+                    ),
+                );
+        }
     }
 }
 
+// --- Native networking (not available on WASM) ---
+
+#[cfg(not(target_family = "wasm"))]
+mod native {
+    use super::*;
+    use std::sync::{mpsc, Mutex};
+
+    #[derive(Resource)]
+    pub(super) struct LeaderboardReceiver(pub Mutex<mpsc::Receiver<Result<Vec<OnlineEntry>, String>>>);
+
+    #[derive(Resource)]
+    pub(super) struct SubmitReceiver(pub Mutex<mpsc::Receiver<Result<(), String>>>);
+
+    #[derive(Resource)]
+    pub(super) struct ReplayReceiver(pub Mutex<mpsc::Receiver<Result<ReplayPayload, String>>>);
+
+    #[derive(Deserialize)]
+    pub(super) struct ReplayPayload {
+        #[serde(deserialize_with = "super::deserialize_seed")]
+        pub seed: u64,
+        pub inputs: Vec<FrameInput>,
+        #[serde(default)]
+        pub level: Option<String>,
+    }
+
+    #[derive(Deserialize)]
+    pub(super) struct SubmitResponse {
+        pub ok: bool,
+    }
+}
+
+#[cfg(not(target_family = "wasm"))]
+use native::*;
+
+#[cfg(not(target_family = "wasm"))]
+#[derive(Resource)]
+struct RefreshTimer(Timer);
+
 // --- Leaderboard fetch ---
 
+#[cfg(not(target_family = "wasm"))]
 fn trigger_fetch_leaderboard(
     mut commands: Commands,
     mut leaderboard: ResMut<OnlineLeaderboard>,
@@ -138,8 +151,8 @@ fn trigger_fetch_leaderboard(
         return;
     }
     leaderboard.status = NetStatus::Fetching;
-    let (tx, rx) = mpsc::channel();
-    commands.insert_resource(LeaderboardReceiver(Mutex::new(rx)));
+    let (tx, rx) = std::sync::mpsc::channel();
+    commands.insert_resource(LeaderboardReceiver(std::sync::Mutex::new(rx)));
 
     let level = current_level.name().to_string();
     std::thread::spawn(move || {
@@ -148,6 +161,7 @@ fn trigger_fetch_leaderboard(
     });
 }
 
+#[cfg(not(target_family = "wasm"))]
 fn periodic_refresh(
     mut commands: Commands,
     mut leaderboard: ResMut<OnlineLeaderboard>,
@@ -162,8 +176,8 @@ fn periodic_refresh(
             return;
         }
         leaderboard.status = NetStatus::Fetching;
-        let (tx, rx) = mpsc::channel();
-        commands.insert_resource(LeaderboardReceiver(Mutex::new(rx)));
+        let (tx, rx) = std::sync::mpsc::channel();
+        commands.insert_resource(LeaderboardReceiver(std::sync::Mutex::new(rx)));
         let level = current_level.name().to_string();
         std::thread::spawn(move || {
             let result = fetch_leaderboard_http(&level);
@@ -172,6 +186,7 @@ fn periodic_refresh(
     }
 }
 
+#[cfg(not(target_family = "wasm"))]
 fn fetch_leaderboard_http(level: &str) -> Result<Vec<OnlineEntry>, String> {
     let url = format!("{API_URL}/leaderboard?level={level}");
     let body: Vec<OnlineEntry> = ureq::get(&url)
@@ -183,6 +198,7 @@ fn fetch_leaderboard_http(level: &str) -> Result<Vec<OnlineEntry>, String> {
     Ok(body)
 }
 
+#[cfg(not(target_family = "wasm"))]
 fn poll_leaderboard_response(
     mut leaderboard: ResMut<OnlineLeaderboard>,
     receiver: Option<Res<LeaderboardReceiver>>,
@@ -198,8 +214,8 @@ fn poll_leaderboard_response(
             warn!("Leaderboard fetch failed: {e}");
             leaderboard.status = NetStatus::Error(e);
         }
-        Err(mpsc::TryRecvError::Empty) => {}
-        Err(mpsc::TryRecvError::Disconnected) => {
+        Err(std::sync::mpsc::TryRecvError::Empty) => {}
+        Err(std::sync::mpsc::TryRecvError::Disconnected) => {
             if leaderboard.status == NetStatus::Fetching {
                 leaderboard.status = NetStatus::Error("Connection lost".into());
             }
@@ -209,6 +225,7 @@ fn poll_leaderboard_response(
 
 // --- Score submission ---
 
+#[cfg(not(target_family = "wasm"))]
 fn handle_submit_score(
     mut commands: Commands,
     mut pending: ResMut<PendingSubmission>,
@@ -220,8 +237,8 @@ fn handle_submit_score(
         .map(|n| n.0.clone())
         .unwrap_or_else(|| "Anonymous".into());
 
-    let (tx, rx) = mpsc::channel();
-    commands.insert_resource(SubmitReceiver(Mutex::new(rx)));
+    let (tx, rx) = std::sync::mpsc::channel();
+    commands.insert_resource(SubmitReceiver(std::sync::Mutex::new(rx)));
 
     std::thread::spawn(move || {
         let result = submit_score_http(data.time, &name, data.seed, &data.inputs, &data.level);
@@ -229,6 +246,7 @@ fn handle_submit_score(
     });
 }
 
+#[cfg(not(target_family = "wasm"))]
 fn submit_score_http(
     time: f32,
     name: &str,
@@ -258,6 +276,7 @@ fn submit_score_http(
     Ok(())
 }
 
+#[cfg(not(target_family = "wasm"))]
 fn poll_submit_response(
     mut commands: Commands,
     receiver: Option<Res<SubmitReceiver>>,
@@ -272,8 +291,8 @@ fn poll_submit_response(
             // Re-fetch leaderboard after successful submission
             if *game_mode == GameMode::Levels {
                 leaderboard.status = NetStatus::Fetching;
-                let (tx, rx) = mpsc::channel();
-                commands.insert_resource(LeaderboardReceiver(Mutex::new(rx)));
+                let (tx, rx) = std::sync::mpsc::channel();
+                commands.insert_resource(LeaderboardReceiver(std::sync::Mutex::new(rx)));
                 let level = current_level.name().to_string();
                 std::thread::spawn(move || {
                     let result = fetch_leaderboard_http(&level);
@@ -284,13 +303,14 @@ fn poll_submit_response(
         Ok(Err(e)) => {
             warn!("Score submission failed: {e}");
         }
-        Err(mpsc::TryRecvError::Empty) => {}
-        Err(mpsc::TryRecvError::Disconnected) => {}
+        Err(std::sync::mpsc::TryRecvError::Empty) => {}
+        Err(std::sync::mpsc::TryRecvError::Disconnected) => {}
     }
 }
 
 // --- Replay fetch ---
 
+#[cfg(not(target_family = "wasm"))]
 fn handle_fetch_replay(
     mut commands: Commands,
     mut pending: ResMut<PendingReplayFetch>,
@@ -301,8 +321,8 @@ fn handle_fetch_replay(
     status.loading = true;
     let level = current_level.name().to_string();
 
-    let (tx, rx) = mpsc::channel();
-    commands.insert_resource(ReplayReceiver(Mutex::new(rx)));
+    let (tx, rx) = std::sync::mpsc::channel();
+    commands.insert_resource(ReplayReceiver(std::sync::Mutex::new(rx)));
 
     std::thread::spawn(move || {
         let result = fetch_replay_http(index, &level);
@@ -310,6 +330,7 @@ fn handle_fetch_replay(
     });
 }
 
+#[cfg(not(target_family = "wasm"))]
 fn fetch_replay_http(index: usize, level: &str) -> Result<ReplayPayload, String> {
     let url = format!("{API_URL}/replay/{index}?level={level}");
     let payload: ReplayPayload = ureq::get(&url)
@@ -321,6 +342,7 @@ fn fetch_replay_http(index: usize, level: &str) -> Result<ReplayPayload, String>
     Ok(payload)
 }
 
+#[cfg(not(target_family = "wasm"))]
 fn poll_replay_response(
     receiver: Option<Res<ReplayReceiver>>,
     mut replay_data: ResMut<ReplayData>,
@@ -341,8 +363,8 @@ fn poll_replay_response(
             warn!("Replay fetch failed: {e}");
             status.loading = false;
         }
-        Err(mpsc::TryRecvError::Empty) => {}
-        Err(mpsc::TryRecvError::Disconnected) => {
+        Err(std::sync::mpsc::TryRecvError::Empty) => {}
+        Err(std::sync::mpsc::TryRecvError::Disconnected) => {
             if status.loading {
                 status.loading = false;
                 warn!("Replay fetch connection lost");
