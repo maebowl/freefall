@@ -14,7 +14,7 @@ getrandom = { version = "0.3", features = ["wasm_js"] }
 [target.'cfg(not(target_family = "wasm"))'.dependencies]
 ureq = { version = "3", features = ["json"] }
 
-[target.'cfg(all(target_family = "wasm", any(target_os = "unknown", target_os = "none")))'.dependencies]
+[target.wasm32-unknown-unknown.dependencies]
 getrandom_02 = { package = "getrandom", version = "0.2", features = ["js"] }
 
 # Optimize dependencies in dev builds for playable performance
