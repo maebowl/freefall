@@ -16,14 +16,16 @@ export default {
     try {
       if (request.method === "GET" && path === "/api/leaderboard") {
         const level = url.searchParams.get("level") || "default";
-        return await getLeaderboard(env, corsHeaders, level);
+        const glitched = url.searchParams.get("glitched") === "true";
+        return await getLeaderboard(env, corsHeaders, level, glitched);
       }
 
       const replayMatch = path.match(/^\/api\/replay\/(\d+)$/);
       if (request.method === "GET" && replayMatch) {
         const index = parseInt(replayMatch[1], 10);
         const level = url.searchParams.get("level") || "default";
-        return await getReplay(env, corsHeaders, index, level);
+        const glitched = url.searchParams.get("glitched") === "true";
+        return await getReplay(env, corsHeaders, index, level, glitched);
       }
 
       if (request.method === "POST" && path === "/api/leaderboard") {
@@ -44,18 +46,18 @@ function json(data, status = 200, corsHeaders = {}) {
   });
 }
 
-function leaderboardKey(level) {
-  return `top5:${level}`;
+function leaderboardKey(level, glitched = false) {
+  return glitched ? `top5:glitched:${level}` : `top5:${level}`;
 }
 
-async function getLeaderboard(env, corsHeaders, level) {
-  const raw = await env.LEADERBOARD.get(leaderboardKey(level));
+async function getLeaderboard(env, corsHeaders, level, glitched) {
+  const raw = await env.LEADERBOARD.get(leaderboardKey(level, glitched));
   const entries = raw ? JSON.parse(raw) : [];
   return json(entries, 200, corsHeaders);
 }
 
-async function getReplay(env, corsHeaders, index, level) {
-  const raw = await env.LEADERBOARD.get(leaderboardKey(level));
+async function getReplay(env, corsHeaders, index, level, glitched) {
+  const raw = await env.LEADERBOARD.get(leaderboardKey(level, glitched));
   const entries = raw ? JSON.parse(raw) : [];
 
   if (index < 0 || index >= entries.length) {
@@ -78,7 +80,7 @@ async function getReplay(env, corsHeaders, index, level) {
 
 async function submitScore(env, corsHeaders, request) {
   const body = await request.json();
-  const { time, name, seed, inputs, level } = body;
+  const { time, name, seed, inputs, level, glitched } = body;
 
   if (
     typeof time !== "number" ||
@@ -92,7 +94,7 @@ async function submitScore(env, corsHeaders, request) {
     return json({ error: "Invalid body" }, 400, corsHeaders);
   }
 
-  const key = leaderboardKey(level.trim());
+  const key = leaderboardKey(level.trim(), !!glitched);
   const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
   const raw = await env.LEADERBOARD.get(key);

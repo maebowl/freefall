@@ -2,7 +2,7 @@ use bevy::prelude::*;
 
 use crate::ldtk::{CurrentLevel, LEVEL_ORDER};
 use crate::level::{GameMode, GamePhase, LevelEntity, SpawnPoint, ZenRun};
-use crate::net::{NetStatus, OnlineLeaderboard, PendingReplayFetch, PendingSubmission, PlayerName, ReplayFetchStatus};
+use crate::net::{NetStatus, OnlineLeaderboard, PendingReplayFetch, PendingSubmission, PlayerName, ReplayFetchRequest, ReplayFetchStatus};
 use crate::player::Player;
 use crate::replay::{FrameInput, ReplayData};
 use crate::sfx::SfxEvent;
@@ -68,6 +68,13 @@ pub struct LastRunTime(pub Option<f32>);
 
 #[derive(Resource, Default)]
 struct LeaderboardSelection(usize);
+
+#[derive(Resource, Default, PartialEq, Clone, Copy)]
+enum LeaderboardTab {
+    #[default]
+    Regular,
+    Glitched,
+}
 
 #[derive(Resource, Default)]
 struct LevelSelectSelection(usize);
@@ -297,6 +304,7 @@ impl Plugin for UiPlugin {
             .init_resource::<Leaderboard>()
             .init_resource::<LeaderboardVisible>()
             .init_resource::<LeaderboardSelection>()
+            .init_resource::<LeaderboardTab>()
             .init_resource::<LevelSelectSelection>()
             .init_resource::<PauseSelection>()
             .init_resource::<TitleSelection>()
@@ -703,6 +711,7 @@ fn record_pause_duration(
     time: Res<Time>,
 ) {
     if let Some(start) = recorder.pause_start.take() {
+        recorder.had_pause = true;
         let duration = (time.elapsed_secs_f64() - start) as f32;
         if duration > 0.0 {
             recorder.frames.push(crate::replay::FrameInput {
@@ -743,14 +752,19 @@ fn pause_menu_input(
     (mut replay_data, mut pending_replay): (ResMut<ReplayData>, ResMut<PendingReplayFetch>),
     replay_status: Res<ReplayFetchStatus>,
     (mut zen_leaderboard, zen_run, mut sfx): (ResMut<ZenLeaderboard>, Res<ZenRun>, MessageWriter<SfxEvent>),
+    mut lb_tab: ResMut<LeaderboardTab>,
 ) {
     let gamepad = gamepads.iter().next();
 
     let gp_up = gamepad.is_some_and(|g| g.just_pressed(GamepadButton::DPadUp));
     let gp_down = gamepad.is_some_and(|g| g.just_pressed(GamepadButton::DPadDown));
+    let gp_left = gamepad.is_some_and(|g| g.just_pressed(GamepadButton::DPadLeft));
+    let gp_right = gamepad.is_some_and(|g| g.just_pressed(GamepadButton::DPadRight));
 
     let up = keys.just_pressed(KeyCode::ArrowUp) || keys.just_pressed(KeyCode::KeyW) || gp_up;
     let down = keys.just_pressed(KeyCode::ArrowDown) || keys.just_pressed(KeyCode::KeyS) || gp_down;
+    let left = keys.just_pressed(KeyCode::ArrowLeft) || keys.just_pressed(KeyCode::KeyA) || gp_left;
+    let right = keys.just_pressed(KeyCode::ArrowRight) || keys.just_pressed(KeyCode::KeyD) || gp_right;
 
     // If leaderboard is open, handle leaderboard navigation
     if leaderboard_visible.visible {
@@ -766,10 +780,33 @@ fn pause_menu_input(
             return;
         }
 
+        // Tab switching with left/right
+        let old_tab = *lb_tab;
+        if left && *lb_tab == LeaderboardTab::Glitched {
+            *lb_tab = LeaderboardTab::Regular;
+        }
+        if right && *lb_tab == LeaderboardTab::Regular {
+            *lb_tab = LeaderboardTab::Glitched;
+        }
+        if *lb_tab != old_tab {
+            lb_selection.0 = 0;
+            sfx.write(SfxEvent::MenuTick);
+            for entity in &existing_lb {
+                commands.entity(entity).despawn();
+            }
+            let cached_time = leaderboard_visible.cached_time;
+            spawn_leaderboard(&mut commands, &local_leaderboard, &online_leaderboard, lb_selection.0, &replay_status, cached_time, &game_mode, &zen_leaderboard, *lb_tab);
+            return;
+        }
+
         let cached_time = leaderboard_visible.cached_time;
-        let use_online = !online_leaderboard.entries.is_empty();
+        let entries_for_tab = match *lb_tab {
+            LeaderboardTab::Regular => &online_leaderboard.entries,
+            LeaderboardTab::Glitched => &online_leaderboard.glitched_entries,
+        };
+        let use_online = !entries_for_tab.is_empty();
         let entry_count = if use_online {
-            online_leaderboard.entries.len()
+            entries_for_tab.len()
         } else {
             local_leaderboard.entries.len()
         };
@@ -790,7 +827,7 @@ fn pause_menu_input(
                 for entity in &existing_lb {
                     commands.entity(entity).despawn();
                 }
-                spawn_leaderboard(&mut commands, &local_leaderboard, &online_leaderboard, lb_selection.0, &replay_status, cached_time, &game_mode, &zen_leaderboard);
+                spawn_leaderboard(&mut commands, &local_leaderboard, &online_leaderboard, lb_selection.0, &replay_status, cached_time, &game_mode, &zen_leaderboard, *lb_tab);
             }
 
             // Confirm — start replay
@@ -799,11 +836,14 @@ fn pause_menu_input(
                 sfx.write(SfxEvent::MenuDing);
                 if !replay_status.loading {
                     if use_online {
-                        pending_replay.0 = Some(lb_selection.0);
+                        pending_replay.0 = Some(ReplayFetchRequest {
+                            index: lb_selection.0,
+                            glitched: *lb_tab == LeaderboardTab::Glitched,
+                        });
                         for entity in &existing_lb {
                             commands.entity(entity).despawn();
                         }
-                        spawn_leaderboard(&mut commands, &local_leaderboard, &online_leaderboard, lb_selection.0, &replay_status, cached_time, &game_mode, &zen_leaderboard);
+                        spawn_leaderboard(&mut commands, &local_leaderboard, &online_leaderboard, lb_selection.0, &replay_status, cached_time, &game_mode, &zen_leaderboard, *lb_tab);
                     } else {
                         let entry = &local_leaderboard.entries[lb_selection.0];
                         replay_data.frames = entry.inputs.clone();
@@ -860,7 +900,8 @@ fn pause_menu_input(
             "Leaderboard" => {
                 leaderboard_visible.visible = true;
                 lb_selection.0 = 0;
-                spawn_leaderboard(&mut commands, &local_leaderboard, &online_leaderboard, lb_selection.0, &replay_status, leaderboard_visible.cached_time, &game_mode, &zen_leaderboard);
+                *lb_tab = LeaderboardTab::Regular;
+                spawn_leaderboard(&mut commands, &local_leaderboard, &online_leaderboard, lb_selection.0, &replay_status, leaderboard_visible.cached_time, &game_mode, &zen_leaderboard, *lb_tab);
             }
             "Title Screen" => {
                 if *game_mode == GameMode::Zen && zen_run.max_height > 0.0 {
@@ -972,17 +1013,24 @@ fn spawn_level_complete(
     // Default to "Restart"
     sel.0 = if has_next { 1 } else { 0 };
 
+    let is_glitched = deferred.0.as_ref().is_some_and(|d| d.glitched);
+    let board = if is_glitched {
+        &online_leaderboard.glitched_entries
+    } else {
+        &online_leaderboard.entries
+    };
+
     let is_wr = timer.final_time.is_some_and(|t| {
-        if online_leaderboard.entries.is_empty() {
+        if board.is_empty() {
             true
         } else {
-            t < online_leaderboard.entries[0].time
+            t < board[0].time
         }
     });
 
     let is_top5 = *game_mode == GameMode::Levels && timer.final_time.is_some_and(|t| {
-        online_leaderboard.entries.len() < 5
-            || t < online_leaderboard.entries.last().map(|e| e.time).unwrap_or(f32::MAX)
+        board.len() < 5
+            || t < board.last().map(|e| e.time).unwrap_or(f32::MAX)
     });
 
     if is_top5 {
@@ -1450,13 +1498,18 @@ fn spawn_leaderboard(
     last_time: Option<f32>,
     game_mode: &GameMode,
     zen_leaderboard: &ZenLeaderboard,
+    tab: LeaderboardTab,
 ) {
     if *game_mode == GameMode::Zen {
         spawn_zen_leaderboard(commands, zen_leaderboard);
         return;
     }
 
-    let use_online = !online_leaderboard.entries.is_empty();
+    let online_entries = match tab {
+        LeaderboardTab::Regular => &online_leaderboard.entries,
+        LeaderboardTab::Glitched => &online_leaderboard.glitched_entries,
+    };
+    let use_online = !online_entries.is_empty();
 
     // Compute placement for last run among all personal runs
     let placement = last_time.map(|t| {
@@ -1496,22 +1549,25 @@ fn spawn_leaderboard(
                         BackgroundColor(Color::srgba(0.05, 0.05, 0.1, 0.9)),
                     ))
                     .with_children(|panel| {
-                        let header = match &online_leaderboard.status {
-                            NetStatus::Fetching => "LEADERBOARD  [Fetching...]",
-                            NetStatus::Error(_) => "LEADERBOARD  [Offline]",
-                            _ => "LEADERBOARD",
+                        // Tab header
+                        let status_suffix = match &online_leaderboard.status {
+                            NetStatus::Fetching => "  [Fetching...]",
+                            NetStatus::Error(_) => "  [Offline]",
+                            _ => "",
                         };
+                        let regular_label = if tab == LeaderboardTab::Regular { "[REGULAR]" } else { " Regular " };
+                        let glitched_label = if tab == LeaderboardTab::Glitched { "[GLITCHED]" } else { " Glitched " };
                         panel.spawn((
-                            Text::new(header),
+                            Text::new(format!("{} | {}{}", regular_label, glitched_label, status_suffix)),
                             TextFont {
-                                font_size: 32.0,
+                                font_size: 28.0,
                                 ..default()
                             },
                             TextColor(Color::srgb(0.4, 0.7, 1.0)),
                         ));
 
                         if use_online {
-                            for (i, entry) in online_leaderboard.entries.iter().enumerate() {
+                            for (i, entry) in online_entries.iter().enumerate() {
                                 let minutes = (entry.time / 60.0) as u32;
                                 let seconds = entry.time % 60.0;
                                 let is_selected = i == selected;
@@ -1596,7 +1652,7 @@ fn spawn_leaderboard(
                         }
 
                         panel.spawn((
-                            Text::new("Up/Down: Select  |  A/Space: Replay  |  Esc/B: Back"),
+                            Text::new("Left/Right: Tab  |  Up/Down: Select  |  A/Space: Replay  |  Esc/B: Back"),
                             TextFont {
                                 font_size: 16.0,
                                 ..default()

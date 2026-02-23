@@ -27,6 +27,8 @@ pub struct ReplayRecorder {
     pub seed: u64,
     /// Wall-clock time when the player last paused (for measuring duration).
     pub pause_start: Option<f64>,
+    /// Whether the player paused at any point during this run.
+    pub had_pause: bool,
 }
 
 #[derive(Resource, Default)]
