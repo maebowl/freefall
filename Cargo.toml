@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-bevy = { version = "0.18", features = ["bevy_debug_stepping"] }
+bevy = { version = "0.18", features = ["bevy_debug_stepping", "mp3"] }
 avian2d = "0.5"
 rand = "0.9"
 serde = { version = "1", features = ["derive"] }
