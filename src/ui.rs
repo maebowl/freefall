@@ -338,7 +338,7 @@ impl Plugin for UiPlugin {
             )
             // Pause menu
             .add_systems(OnEnter(GamePhase::Paused), spawn_pause_menu)
-            .add_systems(OnExit(GamePhase::Paused), (despawn_marked::<PauseUi>, despawn_marked::<LeaderboardUi>, clear_leaderboard_visible))
+            .add_systems(OnExit(GamePhase::Paused), (despawn_marked::<PauseUi>, despawn_marked::<LeaderboardUi>, clear_leaderboard_visible, record_pause_duration))
             .add_systems(
                 Update,
                 pause_menu_input.run_if(in_state(GamePhase::Paused)),
@@ -686,17 +686,30 @@ fn check_pause(
     gamepads: Query<&Gamepad>,
     mut next_state: ResMut<NextState<GamePhase>>,
     mut recorder: ResMut<crate::replay::ReplayRecorder>,
+    time: Res<Time>,
 ) {
     let gp_pause = gamepads
         .iter()
         .next()
         .is_some_and(|g| g.just_pressed(GamepadButton::Start));
     if keys.just_pressed(KeyCode::Escape) || gp_pause {
-        recorder.frames.push(crate::replay::FrameInput {
-            paused: true,
-            ..default()
-        });
+        recorder.pause_start = Some(time.elapsed_secs_f64());
         next_state.set(GamePhase::Paused);
+    }
+}
+
+fn record_pause_duration(
+    mut recorder: ResMut<crate::replay::ReplayRecorder>,
+    time: Res<Time>,
+) {
+    if let Some(start) = recorder.pause_start.take() {
+        let duration = (time.elapsed_secs_f64() - start) as f32;
+        if duration > 0.0 {
+            recorder.frames.push(crate::replay::FrameInput {
+                pause_secs: duration,
+                ..default()
+            });
+        }
     }
 }
 

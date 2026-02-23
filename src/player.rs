@@ -272,7 +272,7 @@ fn player_movement(
         jump_pressed: input.jump_pressed,
         jump_released: input.jump_released,
         dash_pressed: input.dash_pressed,
-        paused: false,
+        pause_secs: 0.0,
     });
 
     let was_dashing = state.dashing;

@@ -16,14 +16,17 @@ pub struct FrameInput {
     pub jump_pressed: bool,
     pub jump_released: bool,
     pub dash_pressed: bool,
+    /// Seconds the player was paused at this point (0.0 = not paused).
     #[serde(default)]
-    pub paused: bool,
+    pub pause_secs: f32,
 }
 
 #[derive(Resource, Default)]
 pub struct ReplayRecorder {
     pub frames: Vec<FrameInput>,
     pub seed: u64,
+    /// Wall-clock time when the player last paused (for measuring duration).
+    pub pause_start: Option<f64>,
 }
 
 #[derive(Resource, Default)]
@@ -39,10 +42,9 @@ pub struct ReplayHudUi;
 #[derive(Component)]
 pub struct ReplayPauseFlash;
 
+/// Counts down how long the "PAUSED" overlay should stay visible during replay.
 #[derive(Resource, Default)]
 struct PauseFlashTimer(f32);
-
-const PAUSE_FLASH_DURATION: f32 = 1.0;
 
 pub struct ReplayPlugin;
 
@@ -173,6 +175,11 @@ fn ghost_movement(
         return;
     };
 
+    // If we're currently showing the pause overlay, don't advance
+    if flash_timer.0 > 0.0 {
+        return;
+    }
+
     let idx = replay_data.frame_index;
     if idx >= replay_data.frames.len() {
         next_state.set(GamePhase::Generating);
@@ -181,16 +188,13 @@ fn ghost_movement(
 
     let frame = &replay_data.frames[idx];
 
-    // Skip paused frames — just show a flash indicator
-    if frame.paused {
-        replay_data.frame_index += 1;
-        if flash_timer.0 <= 0.0 {
-            flash_timer.0 = PAUSE_FLASH_DURATION;
-            // Spawn flash UI if not already showing
-            if existing_flash.is_empty() {
-                spawn_pause_flash(&mut commands);
-            }
+    // Pause frame — show overlay for the recorded duration, then advance
+    if frame.pause_secs > 0.0 {
+        flash_timer.0 = frame.pause_secs;
+        if existing_flash.is_empty() {
+            spawn_pause_flash(&mut commands);
         }
+        replay_data.frame_index += 1;
         return;
     }
 
