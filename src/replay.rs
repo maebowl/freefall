@@ -16,6 +16,8 @@ pub struct FrameInput {
     pub jump_pressed: bool,
     pub jump_released: bool,
     pub dash_pressed: bool,
+    #[serde(default)]
+    pub paused: bool,
 }
 
 #[derive(Resource, Default)]
@@ -34,12 +36,21 @@ pub struct ReplayData {
 #[derive(Component)]
 pub struct ReplayHudUi;
 
+#[derive(Component)]
+pub struct ReplayPauseFlash;
+
+#[derive(Resource, Default)]
+struct PauseFlashTimer(f32);
+
+const PAUSE_FLASH_DURATION: f32 = 1.0;
+
 pub struct ReplayPlugin;
 
 impl Plugin for ReplayPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<ReplayRecorder>()
             .init_resource::<ReplayData>()
+            .init_resource::<PauseFlashTimer>()
             .add_systems(
                 OnEnter(GamePhase::Replaying),
                 (setup_replay, spawn_replay_hud),
@@ -55,10 +66,11 @@ impl Plugin for ReplayPlugin {
                     .chain()
                     .run_if(in_state(GamePhase::Replaying)),
             )
-            // Exit check stays in Update (reads keyboard/gamepad)
+            // Exit check and pause flash in Update
             .add_systems(
                 Update,
-                check_replay_exit.run_if(in_state(GamePhase::Replaying)),
+                (check_replay_exit, update_pause_flash)
+                    .run_if(in_state(GamePhase::Replaying)),
             );
     }
 }
@@ -146,6 +158,7 @@ fn ghost_ground_detection(
 }
 
 fn ghost_movement(
+    mut commands: Commands,
     mut ghosts: Query<
         (&mut LinearVelocity, &mut GravityScale, &mut PlayerState),
         With<GhostPlayer>,
@@ -153,6 +166,8 @@ fn ghost_movement(
     mut replay_data: ResMut<ReplayData>,
     time: Res<Time>,
     mut next_state: ResMut<NextState<GamePhase>>,
+    mut flash_timer: ResMut<PauseFlashTimer>,
+    existing_flash: Query<Entity, With<ReplayPauseFlash>>,
 ) {
     let Ok((mut velocity, mut gravity_scale, mut state)) = ghosts.single_mut() else {
         return;
@@ -160,12 +175,25 @@ fn ghost_movement(
 
     let idx = replay_data.frame_index;
     if idx >= replay_data.frames.len() {
-        // Replay finished — go back to generating (which cleans up and regenerates)
         next_state.set(GamePhase::Generating);
         return;
     }
 
     let frame = &replay_data.frames[idx];
+
+    // Skip paused frames — just show a flash indicator
+    if frame.paused {
+        replay_data.frame_index += 1;
+        if flash_timer.0 <= 0.0 {
+            flash_timer.0 = PAUSE_FLASH_DURATION;
+            // Spawn flash UI if not already showing
+            if existing_flash.is_empty() {
+                spawn_pause_flash(&mut commands);
+            }
+        }
+        return;
+    }
+
     let input = MergedInput {
         move_x: frame.move_x,
         move_y: frame.move_y,
@@ -227,8 +255,56 @@ fn spawn_replay_hud(mut commands: Commands) {
         });
 }
 
-fn despawn_replay_hud(mut commands: Commands, query: Query<Entity, With<ReplayHudUi>>) {
-    for entity in &query {
+fn despawn_replay_hud(
+    mut commands: Commands,
+    hud_query: Query<Entity, With<ReplayHudUi>>,
+    flash_query: Query<Entity, With<ReplayPauseFlash>>,
+) {
+    for entity in &hud_query {
         commands.entity(entity).despawn();
+    }
+    for entity in &flash_query {
+        commands.entity(entity).despawn();
+    }
+}
+
+fn spawn_pause_flash(commands: &mut Commands) {
+    commands
+        .spawn((
+            ReplayPauseFlash,
+            Node {
+                position_type: PositionType::Absolute,
+                width: Val::Percent(100.0),
+                height: Val::Percent(100.0),
+                justify_content: JustifyContent::Center,
+                align_items: AlignItems::Center,
+                ..default()
+            },
+        ))
+        .with_children(|parent| {
+            parent.spawn((
+                Text::new("PAUSED"),
+                TextFont {
+                    font_size: 48.0,
+                    ..default()
+                },
+                TextColor(Color::srgba(1.0, 1.0, 1.0, 0.8)),
+            ));
+        });
+}
+
+fn update_pause_flash(
+    mut commands: Commands,
+    mut timer: ResMut<PauseFlashTimer>,
+    time: Res<Time>,
+    query: Query<Entity, With<ReplayPauseFlash>>,
+) {
+    if timer.0 > 0.0 {
+        timer.0 -= time.delta_secs();
+        if timer.0 <= 0.0 {
+            for entity in &query {
+                commands.entity(entity).despawn();
+            }
+        }
     }
 }

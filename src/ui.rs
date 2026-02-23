@@ -685,12 +685,17 @@ fn check_pause(
     keys: Res<ButtonInput<KeyCode>>,
     gamepads: Query<&Gamepad>,
     mut next_state: ResMut<NextState<GamePhase>>,
+    mut recorder: ResMut<crate::replay::ReplayRecorder>,
 ) {
     let gp_pause = gamepads
         .iter()
         .next()
         .is_some_and(|g| g.just_pressed(GamepadButton::Start));
     if keys.just_pressed(KeyCode::Escape) || gp_pause {
+        recorder.frames.push(crate::replay::FrameInput {
+            paused: true,
+            ..default()
+        });
         next_state.set(GamePhase::Paused);
     }
 }
