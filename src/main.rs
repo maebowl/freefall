@@ -12,9 +12,11 @@ mod walls;
 
 use avian2d::prelude::*;
 use bevy::prelude::*;
+use bevy_embedded_assets::{EmbeddedAssetPlugin, PluginMode};
 
 fn main() {
     App::new()
+        .add_plugins(EmbeddedAssetPlugin { mode: PluginMode::ReplaceDefault })
         .add_plugins(
             DefaultPlugins
                 .set(WindowPlugin {
