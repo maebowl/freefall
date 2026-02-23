@@ -1,6 +1,6 @@
 use bevy::prelude::*;
 
-#[derive(Event)]
+#[derive(Message)]
 pub enum SfxEvent {
     MenuTick,
     MenuDing,
@@ -18,7 +18,7 @@ pub struct SfxPlugin;
 
 impl Plugin for SfxPlugin {
     fn build(&self, app: &mut App) {
-        app.add_event::<SfxEvent>()
+        app.add_message::<SfxEvent>()
             .add_systems(Startup, load_sfx)
             .add_systems(PostUpdate, play_sfx);
     }
@@ -32,7 +32,7 @@ fn load_sfx(mut commands: Commands, asset_server: Res<AssetServer>) {
     });
 }
 
-fn play_sfx(mut commands: Commands, mut events: EventReader<SfxEvent>, handles: Res<SfxHandles>) {
+fn play_sfx(mut commands: Commands, mut events: MessageReader<SfxEvent>, handles: Res<SfxHandles>) {
     for event in events.read() {
         let handle = match event {
             SfxEvent::MenuTick => handles.menu_tick.clone(),

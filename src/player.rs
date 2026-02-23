@@ -243,7 +243,7 @@ fn player_movement(
     >,
     time: Res<Time>,
     mut recorder: ResMut<ReplayRecorder>,
-    mut sfx: EventWriter<crate::sfx::SfxEvent>,
+    mut sfx: MessageWriter<crate::sfx::SfxEvent>,
 ) {
     let Ok((mut velocity, mut gravity_scale, mut state)) = players.single_mut() else {
         return;

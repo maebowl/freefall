@@ -481,7 +481,7 @@ fn title_screen_input(
     existing: Query<Entity, With<TitleScreenUi>>,
     mut exit: MessageWriter<AppExit>,
     mut force_name: ResMut<ForceNameEntry>,
-    mut sfx: EventWriter<SfxEvent>,
+    mut sfx: MessageWriter<SfxEvent>,
 ) {
     let gamepad = gamepads.iter().next();
     let max_idx = TITLE_OPTIONS.len().saturating_sub(1);
@@ -566,7 +566,7 @@ fn level_select_input(
     mut next_state: ResMut<NextState<GamePhase>>,
     mut commands: Commands,
     existing: Query<Entity, With<LevelSelectUi>>,
-    mut sfx: EventWriter<SfxEvent>,
+    mut sfx: MessageWriter<SfxEvent>,
 ) {
     let gamepad = gamepads.iter().next();
     let max_idx = LEVEL_ORDER.len().saturating_sub(1);
@@ -724,7 +724,7 @@ fn pause_menu_input(
     online_leaderboard: Res<OnlineLeaderboard>,
     (mut replay_data, mut pending_replay): (ResMut<ReplayData>, ResMut<PendingReplayFetch>),
     replay_status: Res<ReplayFetchStatus>,
-    (mut zen_leaderboard, zen_run, mut sfx): (ResMut<ZenLeaderboard>, Res<ZenRun>, EventWriter<SfxEvent>),
+    (mut zen_leaderboard, zen_run, mut sfx): (ResMut<ZenLeaderboard>, Res<ZenRun>, MessageWriter<SfxEvent>),
 ) {
     let gamepad = gamepads.iter().next();
 
@@ -1130,7 +1130,7 @@ fn level_complete_input(
     online_leaderboard: Res<OnlineLeaderboard>,
     mut name_prompt: ResMut<ScoreNamePrompt>,
     mut deferred: ResMut<DeferredSubmission>,
-    (mut pending, mut sfx): (ResMut<PendingSubmission>, EventWriter<SfxEvent>),
+    (mut pending, mut sfx): (ResMut<PendingSubmission>, MessageWriter<SfxEvent>),
     mut kb_cursor: ResMut<KeyboardCursor>,
 ) {
     let gamepad = gamepads.iter().next();
