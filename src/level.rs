@@ -7,7 +7,7 @@ use rand::rngs::StdRng;
 use crate::ldtk::{self, CurrentLevel};
 use crate::net::SubmissionData;
 use crate::pieces;
-use crate::player::{spawn_player, Player};
+use crate::player::{spawn_player, Player, PlayerState};
 use crate::replay::ReplayRecorder;
 use crate::ui::{DeferredSubmission, LastRunTime, Leaderboard, SpeedrunTimer, ZenLeaderboard};
 use crate::walls::Wall;
@@ -299,7 +299,16 @@ fn generate_level(
 
 fn reposition_player(
     spawn_point: Res<SpawnPoint>,
-    mut players: Query<(&mut Transform, &mut LinearVelocity, &mut Visibility), With<Player>>,
+    mut players: Query<
+        (
+            &mut Transform,
+            &mut LinearVelocity,
+            &mut Visibility,
+            &mut PlayerState,
+            &mut GravityScale,
+        ),
+        With<Player>,
+    >,
     mut should_reposition: ResMut<ShouldReposition>,
 ) {
     if !should_reposition.0 {
@@ -307,10 +316,14 @@ fn reposition_player(
     }
     should_reposition.0 = false;
 
-    for (mut tf, mut vel, mut vis) in &mut players {
+    for (mut tf, mut vel, mut vis, mut state, mut gravity_scale) in &mut players {
         tf.translation = spawn_point.0.extend(0.0);
         vel.0 = Vec2::ZERO;
         *vis = Visibility::Inherited;
+        // Clear any in-progress dash so momentum/gravity-disable doesn't carry
+        // into the fresh run.
+        *state = PlayerState::default();
+        gravity_scale.0 = 1.0;
     }
 }
 

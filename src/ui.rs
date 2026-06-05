@@ -1,3 +1,4 @@
+use avian2d::prelude::{Physics, PhysicsTime};
 use bevy::prelude::*;
 
 use crate::ldtk::{CurrentLevel, LEVEL_ORDER};
@@ -345,8 +346,8 @@ impl Plugin for UiPlugin {
                 level_complete_input.run_if(in_state(GamePhase::LevelComplete)),
             )
             // Pause menu
-            .add_systems(OnEnter(GamePhase::Paused), spawn_pause_menu)
-            .add_systems(OnExit(GamePhase::Paused), (despawn_marked::<PauseUi>, despawn_marked::<LeaderboardUi>, clear_leaderboard_visible, record_pause_duration))
+            .add_systems(OnEnter(GamePhase::Paused), (spawn_pause_menu, pause_physics))
+            .add_systems(OnExit(GamePhase::Paused), (despawn_marked::<PauseUi>, despawn_marked::<LeaderboardUi>, clear_leaderboard_visible, record_pause_duration, unpause_physics))
             .add_systems(
                 Update,
                 pause_menu_input.run_if(in_state(GamePhase::Paused)),
@@ -704,6 +705,16 @@ fn check_pause(
         recorder.pause_start = Some(time.elapsed_secs_f64());
         next_state.set(GamePhase::Paused);
     }
+}
+
+/// Freeze the physics simulation while the pause menu is open so the player
+/// (e.g. mid-dash, with gravity disabled) doesn't keep drifting.
+fn pause_physics(mut physics_time: ResMut<Time<Physics>>) {
+    physics_time.pause();
+}
+
+fn unpause_physics(mut physics_time: ResMut<Time<Physics>>) {
+    physics_time.unpause();
 }
 
 fn record_pause_duration(
