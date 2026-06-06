@@ -9,6 +9,7 @@ mod sfx;
 mod ui;
 mod username;
 mod walls;
+mod zen_fx;
 
 use avian2d::prelude::*;
 use bevy::prelude::*;
@@ -43,6 +44,7 @@ fn main() {
             username::UsernamePlugin,
             ldtk::LdtkPlugin,
             sfx::SfxPlugin,
+            zen_fx::ZenFxPlugin,
         ))
         .add_systems(Startup, setup)
         .run();
