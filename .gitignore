@@ -5,3 +5,7 @@
 
 # LDtk editor auto-backups
 all-the-levels/backups/
+
+# Wrangler local state / node deps (leaderboard worker tooling)
+.wrangler/
+node_modules/
