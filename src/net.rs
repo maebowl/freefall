@@ -15,7 +15,6 @@ pub struct PlayerName(pub String);
 #[derive(Resource, Default)]
 pub struct OnlineLeaderboard {
     pub entries: Vec<OnlineEntry>,
-    pub glitched_entries: Vec<OnlineEntry>,
     pub status: NetStatus,
 }
 
@@ -58,16 +57,10 @@ pub struct SubmissionData {
     pub seed: u64,
     pub inputs: Vec<FrameInput>,
     pub level: String,
-    pub glitched: bool,
 }
 
 #[derive(Resource, Default)]
-pub struct PendingReplayFetch(pub Option<ReplayFetchRequest>);
-
-pub struct ReplayFetchRequest {
-    pub index: usize,
-    pub glitched: bool,
-}
+pub struct PendingReplayFetch(pub Option<usize>);
 
 #[derive(Resource, Default)]
 pub struct ReplayFetchStatus {
@@ -112,9 +105,8 @@ mod native {
     use super::*;
     use std::sync::{mpsc, Mutex};
 
-    /// (regular_entries, glitched_entries)
     #[derive(Resource)]
-    pub(super) struct LeaderboardReceiver(pub Mutex<mpsc::Receiver<Result<(Vec<OnlineEntry>, Vec<OnlineEntry>), String>>>);
+    pub(super) struct LeaderboardReceiver(pub Mutex<mpsc::Receiver<Result<Vec<OnlineEntry>, String>>>);
 
     #[derive(Resource)]
     pub(super) struct SubmitReceiver(pub Mutex<mpsc::Receiver<Result<(), String>>>);
@@ -155,7 +147,6 @@ fn trigger_fetch_leaderboard(
 ) {
     if *game_mode == GameMode::Zen {
         leaderboard.entries.clear();
-        leaderboard.glitched_entries.clear();
         leaderboard.status = NetStatus::Idle;
         return;
     }
@@ -196,24 +187,15 @@ fn periodic_refresh(
 }
 
 #[cfg(not(target_family = "wasm"))]
-fn fetch_leaderboard_http(level: &str) -> Result<(Vec<OnlineEntry>, Vec<OnlineEntry>), String> {
+fn fetch_leaderboard_http(level: &str) -> Result<Vec<OnlineEntry>, String> {
     let url = format!("{API_URL}/leaderboard?level={level}");
-    let regular: Vec<OnlineEntry> = ureq::get(&url)
+    let body: Vec<OnlineEntry> = ureq::get(&url)
         .call()
         .map_err(|e| e.to_string())?
         .body_mut()
         .read_json()
         .map_err(|e| e.to_string())?;
-
-    let glitched_url = format!("{API_URL}/leaderboard?level={level}&glitched=true");
-    let glitched: Vec<OnlineEntry> = ureq::get(&glitched_url)
-        .call()
-        .map_err(|e| e.to_string())?
-        .body_mut()
-        .read_json()
-        .map_err(|e| e.to_string())?;
-
-    Ok((regular, glitched))
+    Ok(body)
 }
 
 #[cfg(not(target_family = "wasm"))]
@@ -224,9 +206,8 @@ fn poll_leaderboard_response(
     let Some(receiver) = receiver else { return };
     let rx = receiver.0.lock().unwrap();
     match rx.try_recv() {
-        Ok(Ok((regular, glitched))) => {
-            leaderboard.entries = regular;
-            leaderboard.glitched_entries = glitched;
+        Ok(Ok(entries)) => {
+            leaderboard.entries = entries;
             leaderboard.status = NetStatus::Ready;
         }
         Ok(Err(e)) => {
@@ -260,7 +241,7 @@ fn handle_submit_score(
     commands.insert_resource(SubmitReceiver(std::sync::Mutex::new(rx)));
 
     std::thread::spawn(move || {
-        let result = submit_score_http(data.time, &name, data.seed, &data.inputs, &data.level, data.glitched);
+        let result = submit_score_http(data.time, &name, data.seed, &data.inputs, &data.level);
         let _ = tx.send(result);
     });
 }
@@ -272,7 +253,6 @@ fn submit_score_http(
     seed: u64,
     inputs: &[FrameInput],
     level: &str,
-    glitched: bool,
 ) -> Result<(), String> {
     let url = format!("{API_URL}/leaderboard");
     let body = serde_json::json!({
@@ -281,7 +261,6 @@ fn submit_score_http(
         "seed": seed.to_string(),
         "inputs": inputs,
         "level": level,
-        "glitched": glitched,
     });
     let resp: SubmitResponse = ureq::post(&url)
         .send_json(&body)
@@ -338,24 +317,22 @@ fn handle_fetch_replay(
     mut status: ResMut<ReplayFetchStatus>,
     current_level: Res<CurrentLevel>,
 ) {
-    let Some(req) = pending.0.take() else { return };
+    let Some(index) = pending.0.take() else { return };
     status.loading = true;
     let level = current_level.name().to_string();
-    let glitched = req.glitched;
 
     let (tx, rx) = std::sync::mpsc::channel();
     commands.insert_resource(ReplayReceiver(std::sync::Mutex::new(rx)));
 
     std::thread::spawn(move || {
-        let result = fetch_replay_http(req.index, &level, glitched);
+        let result = fetch_replay_http(index, &level);
         let _ = tx.send(result);
     });
 }
 
 #[cfg(not(target_family = "wasm"))]
-fn fetch_replay_http(index: usize, level: &str, glitched: bool) -> Result<ReplayPayload, String> {
-    let glitched_param = if glitched { "&glitched=true" } else { "" };
-    let url = format!("{API_URL}/replay/{index}?level={level}{glitched_param}");
+fn fetch_replay_http(index: usize, level: &str) -> Result<ReplayPayload, String> {
+    let url = format!("{API_URL}/replay/{index}?level={level}");
     let payload: ReplayPayload = ureq::get(&url)
         .call()
         .map_err(|e| e.to_string())?

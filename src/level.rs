@@ -286,8 +286,6 @@ fn generate_level(
     // Reset recorder for this run
     recorder.frames.clear();
     recorder.seed = level_seed.0;
-    recorder.had_pause = false;
-    recorder.pause_start = None;
 
     // Spawn player on first level
     if player_query.is_empty() {
@@ -390,7 +388,6 @@ fn checkpoint_collision(
                     seed: recorder.seed,
                     inputs: recorder.frames.clone(),
                     level: current_level.name().to_string(),
-                    glitched: recorder.had_pause,
                 });
             }
 
