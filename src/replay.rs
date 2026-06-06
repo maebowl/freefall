@@ -113,7 +113,8 @@ fn setup_replay(
         GhostPlayer,
         PlayerState::default(),
         RigidBody::Dynamic,
-        Collider::rectangle(14.0, 14.0),
+        // Must match the live player's collider so replays reproduce runs faithfully.
+        Collider::round_rectangle(8.0, 8.0, 3.0),
         LinearVelocity::default(),
         GravityScale(1.0),
         Friction::new(0.0),

@@ -105,7 +105,10 @@ pub fn spawn_player(commands: &mut Commands, asset_server: &AssetServer, positio
         Player,
         PlayerState::default(),
         RigidBody::Dynamic,
-        Collider::rectangle(14.0, 14.0),
+        // Rounded corners (8px flat faces + 3px border = 14px footprint) so the
+        // player glides over the seams between stacked wall colliders instead of
+        // catching on those internal edges and losing fall momentum.
+        Collider::round_rectangle(8.0, 8.0, 3.0),
         LinearVelocity::default(),
         GravityScale(1.0),
         Friction::new(0.0),
