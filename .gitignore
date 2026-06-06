@@ -1,1 +1,7 @@
 /target
+
+# Runtime/user data written by the game (saved name, zen leaderboard)
+.freefall/
+
+# LDtk editor auto-backups
+all-the-levels/backups/
