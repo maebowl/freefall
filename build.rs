@@ -128,8 +128,43 @@ fn main() {
 
 /// Mirror every level folder under `source` into `dest`, copying only files
 /// whose bytes differ (so an in-sync tree is a no-op and the working tree stays
-/// clean). Returns true if any `.png` was updated (embedded art lags one build).
+/// clean) and pruning folders that have disappeared from the export (so renames
+/// and deletions propagate). Returns true if any `.png` was updated (embedded
+/// art lags one build).
 fn sync_levels(source: &Path, dest: &Path) -> bool {
+    // Names of valid level folders currently in the export.
+    let mut source_names = std::collections::HashSet::new();
+    for entry in fs::read_dir(source).expect("readable LDtk export") {
+        let p = entry.expect("readable entry").path();
+        if p.is_dir()
+            && p.join("data.json").is_file()
+            && p.join("Walls.csv").is_file()
+            && p.join("Door.csv").is_file()
+        {
+            source_names.insert(p.file_name().unwrap().to_string_lossy().into_owned());
+        }
+    }
+
+    // Prune mirrored levels that are gone from the export (e.g. renamed). Guarded
+    // on a non-empty source so a slim checkout without the export can't wipe
+    // assets/levels; only removes folders that look like synced levels.
+    if !source_names.is_empty() && dest.is_dir() {
+        for entry in fs::read_dir(dest).expect("readable assets/levels") {
+            let p = entry.expect("readable entry").path();
+            if !p.is_dir() {
+                continue;
+            }
+            let name = p.file_name().unwrap().to_string_lossy().into_owned();
+            if !source_names.contains(&name) && p.join("data.json").is_file() {
+                println!(
+                    "cargo:warning=Removing stale level '{name}' from assets/levels \
+                     (no longer in the LDtk export)"
+                );
+                fs::remove_dir_all(&p).expect("remove stale level folder");
+            }
+        }
+    }
+
     let mut png_synced = false;
     for entry in fs::read_dir(source).expect("readable LDtk export") {
         let src_folder = entry.expect("readable entry").path();
