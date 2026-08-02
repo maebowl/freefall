@@ -1,9 +1,7 @@
-//! Zen-mode "juice": real-world height milestones, a personal-best line, a
-//! NEW BEST celebration, and a height-driven hue shift on the tower background
-//! (a placeholder until real sky art is added). Heights use the HUD unit —
-//! 1 m = 16 px = one tile — so a milestone at `h` meters sits at world-y
-//! `spawn.y + h * 16`. The camera follows the player, so markers scroll into
-//! view as you climb.
+//! Zen-mode "juice": real-world height milestones, a personal-best line, and a
+//! NEW BEST celebration. Heights use the HUD unit — 1 m = 16 px = one tile — so
+//! a milestone at `h` meters sits at world-y `spawn.y + h * 16`. The camera
+//! follows the player, so markers scroll into view as you climb.
 
 use bevy::prelude::*;
 
@@ -18,11 +16,6 @@ const TILE: f32 = 16.0;
 /// span the screen no matter where the camera sits horizontally.
 const LEVEL_CENTER_X: f32 = 320.0;
 const MARKER_W: f32 = 2400.0;
-
-/// Placeholder background treatment until real sky art lands: rotate the tower
-/// background's hue as the player climbs.
-const HUE_BASE: f32 = 200.0; // hue (degrees) at ground level
-const HUE_PER_METER: f32 = 0.25; // degrees of hue shift per meter climbed
 
 /// Real-world height references, ascending. Edit freely — this is the single
 /// source for milestone heights and labels. (meters, label)
@@ -42,10 +35,6 @@ const MILESTONES: &[(f32, &str)] = &[
     (2000.0, "Base of the clouds"),
     (8849.0, "Summit of Mt. Everest"),
 ];
-
-/// Tags a zen tower background sprite so its hue can be shifted with height.
-#[derive(Component)]
-pub struct ZenBgTint;
 
 /// Tags a milestone line or its label (also carries `LevelEntity` for cleanup).
 #[derive(Component)]
@@ -78,7 +67,7 @@ impl Plugin for ZenFxPlugin {
                 Update,
                 (spawn_zen_markers, zen_crossing_feedback).run_if(in_state(GamePhase::Playing)),
             )
-            .add_systems(Update, (animate_fading_text, zen_background_hue));
+            .add_systems(Update, animate_fading_text);
     }
 }
 
@@ -159,28 +148,6 @@ fn spawn_marker(commands: &mut Commands, y: f32, label: &str, meters: u32, is_pb
         // sitting just above the line.
         Transform::from_xyz(LEVEL_CENTER_X, y + 9.0, -1.0).with_scale(Vec3::splat(0.25)),
     ));
-}
-
-/// Placeholder sky: tint the tower background, rotating its hue with height.
-fn zen_background_hue(
-    game_mode: Res<GameMode>,
-    spawn_point: Res<SpawnPoint>,
-    player_query: Query<&Transform, With<Player>>,
-    mut backgrounds: Query<&mut Sprite, With<ZenBgTint>>,
-) {
-    if *game_mode != GameMode::Zen {
-        return;
-    }
-    let height = player_query
-        .iter()
-        .next()
-        .map(|tf| (tf.translation.y - spawn_point.0.y).max(0.0) / TILE)
-        .unwrap_or(0.0);
-    let hue = (HUE_BASE + height * HUE_PER_METER).rem_euclid(360.0);
-    let tint = Color::hsl(hue, 0.5, 0.7);
-    for mut sprite in &mut backgrounds {
-        sprite.color = tint;
-    }
 }
 
 /// Fire the personal-best celebration as the player climbs past their record;

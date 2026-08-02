@@ -350,13 +350,6 @@ pub fn spawn_zen_piece(
                     Sprite::from_image(asset_server.load(&path)),
                     tf,
                 ));
-            } else if layer_file == "Background.png" {
-                // Tinted by zen_fx to shift hue with height.
-                parent.spawn((
-                    crate::zen_fx::ZenBgTint,
-                    Sprite::from_image(asset_server.load(&path)),
-                    tf,
-                ));
             } else {
                 parent.spawn((
                     Sprite::from_image(asset_server.load(&path)),
