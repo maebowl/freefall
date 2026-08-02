@@ -74,18 +74,19 @@ fn main() {
     }
     levels.sort_by(|a, b| natural_cmp(a, b));
 
-    // 3. Classify by naming convention.
+    // 3. Classify by naming convention:
+    //     `Zen_..._<entrances>E<exits>X[variant]` -> zen stitch piece,
+    //     other `Zen_*` (e.g. Zen_bottom)         -> zen base/aux (loadable, not pooled),
+    //     anything else (e.g. Level_6)            -> menu level.
     let mut menu: Vec<&str> = Vec::new();
     let mut zen: Vec<&str> = Vec::new();
     for name in &levels {
-        if is_zen_stitch(name) {
-            zen.push(name);
-        } else if name.starts_with("Zen_") {
-            // Zen base/aux (e.g. Zen_bottom): loadable via level_files(), but
-            // not a menu level and not part of the random stitch pool.
-        } else {
+        if !name.starts_with("Zen_") {
             menu.push(name);
+        } else if is_zen_stitch(name) {
+            zen.push(name);
         }
+        // else: zen base/aux — loadable via level_files(), not menu or pool.
     }
 
     // 4. Generate the registry.
@@ -217,13 +218,15 @@ fn files_differ(src: &Path, dst: &Path) -> bool {
 }
 
 /// True if `name`'s trailing `_`-segment matches the zen stitch convention
-/// `<entrances>E<exits>X`, where each side is a non-empty subset of {L, R}.
+/// `<entrances>E<exits>X`, optionally followed by a variant suffix (e.g. the `2`
+/// in `RERX2`). Each side is a non-empty subset of {L, R}. Matches the tolerance
+/// of the runtime parser (`ldtk::parse_zen_sides`).
 fn is_zen_stitch(name: &str) -> bool {
     let suffix = name.rsplit('_').next().unwrap_or("");
     let (Some(e), Some(x)) = (suffix.find('E'), suffix.find('X')) else {
         return false;
     };
-    if e >= x || x != suffix.len() - 1 {
+    if e >= x {
         return false;
     }
     let side_ok = |s: &str| !s.is_empty() && s.chars().all(|c| c == 'L' || c == 'R');
