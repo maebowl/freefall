@@ -99,6 +99,7 @@ fn spawn_name_entry_ui(commands: &mut Commands, current: &str, kb_cursor: &Keybo
         ))
         .with_children(|parent| {
             parent.spawn((
+                crate::font::TitleText,
                 Text::new("FREEFALL"),
                 TextFont {
                     font_size: 60.0,

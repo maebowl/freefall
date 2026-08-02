@@ -11,6 +11,7 @@
 	"layers": [
 		"Background.png",
 		"Walls.png",
+		"Slippy.png",
 		"Door.png"
 	],
 	"entities": {
@@ -34,6 +35,28 @@
 				"layer": "Entities",
 				"x": 272,
 				"y": 576,
+				"width": 16,
+				"height": 16,
+				"color": 39387,
+				"customFields" : {}
+			},
+			{
+				"id": "Checkpoint",
+				"iid": "4674ccc0-6fc0-11f1-8d97-5f867e535c33",
+				"layer": "Entities",
+				"x": 272,
+				"y": 560,
+				"width": 16,
+				"height": 16,
+				"color": 39387,
+				"customFields" : {}
+			},
+			{
+				"id": "Checkpoint",
+				"iid": "47b05a00-6fc0-11f1-8d97-a9d907478355",
+				"layer": "Entities",
+				"x": 272,
+				"y": 544,
 				"width": 16,
 				"height": 16,
 				"color": 39387,

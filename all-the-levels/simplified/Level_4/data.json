@@ -11,6 +11,7 @@
 	"layers": [
 		"Background.png",
 		"Walls.png",
+		"Slippy.png",
 		"Door.png"
 	],
 	"entities": {

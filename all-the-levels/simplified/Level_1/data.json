@@ -11,6 +11,7 @@
 	"layers": [
 		"Background.png",
 		"Walls.png",
+		"Slippy.png",
 		"Door.png"
 	],
 	"entities": {
@@ -71,6 +72,49 @@
 				"height": 16,
 				"color": 6539085,
 				"customFields" : {}
+			}
+		],
+		"WallWriting": [
+			{
+				"id": "WallWriting",
+				"iid": "57f805a0-6fc0-11f1-8d97-eb15731da39a",
+				"layer": "Entities",
+				"x": 144,
+				"y": 256,
+				"width": 16,
+				"height": 16,
+				"color": 15389866,
+				"customFields": {
+					"WritingID": "Arrow"
+				}
+			},
+			{
+				"id": "WallWriting",
+				"iid": "5ed1de00-6fc0-11f1-8d97-bfd52e988ea1",
+				"layer": "Entities",
+				"x": 96,
+				"y": 192,
+				"width": 16,
+				"height": 16,
+				"color": 15389866,
+				"customFields": {
+					"WritingID": "Jump"
+				}
+			}
+		],
+		"TutorialText": [
+			{
+				"id": "TutorialText",
+				"iid": "ea59aa60-6fc0-11f1-8d97-c723b65f3a10",
+				"layer": "Entities",
+				"x": 64,
+				"y": 304,
+				"width": 16,
+				"height": 16,
+				"color": 11882632,
+				"customFields": {
+					"TutorialTextType": "Press_XJUMPX_To_Jump"
+				}
 			}
 		]
 	}

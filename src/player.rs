@@ -3,6 +3,7 @@ use bevy::prelude::*;
 
 use crate::level::GamePhase;
 use crate::replay::{FrameInput, ReplayRecorder};
+use crate::walls::SlippyWall;
 
 const WALK_SPEED: f32 = 120.0;
 const SPRINT_MULTIPLIER: f32 = 1.8;
@@ -47,6 +48,8 @@ pub struct PlayerState {
     pub jump_buffer: f32,
     pub wall_dir: f32,
     pub wall_coyote: f32,
+    /// Whether the currently-detected wall is a slippy block (no wall-jump).
+    pub wall_slippy: bool,
 }
 
 impl Default for PlayerState {
@@ -62,6 +65,7 @@ impl Default for PlayerState {
             jump_buffer: 0.0,
             wall_dir: 0.0,
             wall_coyote: 0.0,
+            wall_slippy: false,
         }
     }
 }
@@ -227,10 +231,11 @@ fn buffer_input(
 fn ground_detection(
     spatial_query: SpatialQuery,
     mut query: Query<(Entity, &Transform, &mut PlayerState), With<Player>>,
+    slippy: Query<(), With<SlippyWall>>,
     time: Res<Time>,
 ) {
     for (entity, transform, mut state) in &mut query {
-        detect_ground_and_walls(entity, transform, &mut state, &spatial_query, &time);
+        detect_ground_and_walls(entity, transform, &mut state, &spatial_query, &slippy, &time);
     }
 }
 
@@ -239,6 +244,7 @@ pub fn detect_ground_and_walls(
     transform: &Transform,
     state: &mut PlayerState,
     spatial_query: &SpatialQuery,
+    slippy: &Query<(), With<SlippyWall>>,
     time: &Time,
 ) {
     let base = transform.translation.truncate() + Vec2::new(0.0, -7.0);
@@ -268,28 +274,28 @@ pub fn detect_ground_and_walls(
 
     // Wall detection — cast rays from left and right sides
     let center = transform.translation.truncate();
-    let wall_left = spatial_query
-        .cast_ray(center, Dir2::NEG_X, 9.0, true, &filter)
-        .is_some();
-    let wall_right = spatial_query
-        .cast_ray(center, Dir2::X, 9.0, true, &filter)
-        .is_some();
+    let wall_left = spatial_query.cast_ray(center, Dir2::NEG_X, 9.0, true, &filter);
+    let wall_right = spatial_query.cast_ray(center, Dir2::X, 9.0, true, &filter);
 
     if !state.grounded {
-        if wall_left {
+        if let Some(hit) = &wall_left {
             state.wall_dir = -1.0;
+            state.wall_slippy = slippy.contains(hit.entity);
             state.wall_coyote = WALL_COYOTE_TIME;
-        } else if wall_right {
+        } else if let Some(hit) = &wall_right {
             state.wall_dir = 1.0;
+            state.wall_slippy = slippy.contains(hit.entity);
             state.wall_coyote = WALL_COYOTE_TIME;
         } else {
             state.wall_coyote -= time.delta_secs();
             if state.wall_coyote <= 0.0 {
                 state.wall_dir = 0.0;
+                state.wall_slippy = false;
             }
         }
     } else {
         state.wall_dir = 0.0;
+        state.wall_slippy = false;
         state.wall_coyote = 0.0;
     }
 }
@@ -400,8 +406,8 @@ pub fn apply_movement(
         state.grounded = false;
         state.coyote_timer = 0.0;
         state.jump_buffer = 0.0;
-    } else if want_jump && state.wall_dir != 0.0 && !state.dashing {
-        // Wall jump — kick away from wall
+    } else if want_jump && state.wall_dir != 0.0 && !state.wall_slippy && !state.dashing {
+        // Wall jump — kick away from wall (disabled on slippy walls)
         velocity.x = -state.wall_dir * WALL_JUMP_H;
         velocity.y = WALL_JUMP_V;
         state.wall_dir = 0.0;

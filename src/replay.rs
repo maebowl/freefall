@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 use crate::ldtk::{self, CurrentLevel};
 use crate::level::{build_level, GameMode, GamePhase, LevelEntity, SpawnPoint};
 use crate::player::{apply_movement, detect_ground_and_walls, GhostPlayer, MergedInput, Player, PlayerState};
+use crate::walls::SlippyWall;
 
 const OFFSCREEN: f32 = -99999.0;
 
@@ -153,10 +154,11 @@ fn cleanup_replay(
 fn ghost_ground_detection(
     spatial_query: SpatialQuery,
     mut query: Query<(Entity, &Transform, &mut PlayerState), With<GhostPlayer>>,
+    slippy: Query<(), With<SlippyWall>>,
     time: Res<Time>,
 ) {
     for (entity, transform, mut state) in &mut query {
-        detect_ground_and_walls(entity, transform, &mut state, &spatial_query, &time);
+        detect_ground_and_walls(entity, transform, &mut state, &spatial_query, &slippy, &time);
     }
 }
 

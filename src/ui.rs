@@ -391,6 +391,7 @@ fn rebuild_title_screen(commands: &mut Commands, selected: usize) {
         ))
         .with_children(|parent| {
             parent.spawn((
+                crate::font::TitleText,
                 Text::new("FREEFALL"),
                 TextFont {
                     font_size: 80.0,

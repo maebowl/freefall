@@ -1,4 +1,5 @@
 mod camera;
+mod font;
 mod ldtk;
 mod level;
 mod net;
@@ -6,6 +7,7 @@ mod pieces;
 mod player;
 mod replay;
 mod sfx;
+mod tutorial;
 mod ui;
 mod username;
 mod walls;
@@ -61,6 +63,8 @@ fn main() {
             ldtk::LdtkPlugin,
             sfx::SfxPlugin,
             zen_fx::ZenFxPlugin,
+            font::FontPlugin,
+            tutorial::TutorialPlugin,
         ))
         .add_systems(Startup, setup)
         .run();

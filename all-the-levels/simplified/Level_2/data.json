@@ -11,6 +11,7 @@
 	"layers": [
 		"Background.png",
 		"Walls.png",
+		"Slippy.png",
 		"Door.png"
 	],
 	"entities": {
@@ -71,6 +72,49 @@
 				"height": 16,
 				"color": 39387,
 				"customFields" : {}
+			}
+		],
+		"TutorialText": [
+			{
+				"id": "TutorialText",
+				"iid": "d58b5cd0-6fc0-11f1-8d97-1da7c4b3e19f",
+				"layer": "Entities",
+				"x": 112,
+				"y": 576,
+				"width": 16,
+				"height": 16,
+				"color": 11882632,
+				"customFields": {
+					"TutorialTextType": "Press_XDASHX_To_Dash"
+				}
+			}
+		],
+		"WallWriting": [
+			{
+				"id": "WallWriting",
+				"iid": "f7aed580-6fc0-11f1-8d97-57d0be5723ec",
+				"layer": "Entities",
+				"x": 112,
+				"y": 480,
+				"width": 16,
+				"height": 16,
+				"color": 15389866,
+				"customFields": {
+					"WritingID": "Dash"
+				}
+			},
+			{
+				"id": "WallWriting",
+				"iid": "ffa393c0-6fc0-11f1-8d97-21e7cd3b4345",
+				"layer": "Entities",
+				"x": 176,
+				"y": 528,
+				"width": 16,
+				"height": 16,
+				"color": 15389866,
+				"customFields": {
+					"WritingID": "Arrow"
+				}
 			}
 		]
 	}

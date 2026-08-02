@@ -108,15 +108,25 @@ fn main() {
     }
     out.push_str("];\n\n");
 
-    out.push_str("/// Embedded (data.json, Walls.csv, Door.csv) for a level folder.\n");
-    out.push_str("fn level_files(name: &str) -> (&'static str, &'static str, &'static str) {\n");
+    out.push_str(
+        "/// Embedded (data.json, Walls.csv, Door.csv, Slippy.csv) for a level folder.\n\
+         /// Slippy.csv is an optional IntGrid layer; empty string when absent.\n",
+    );
+    out.push_str(
+        "fn level_files(name: &str) -> (&'static str, &'static str, &'static str, &'static str) {\n",
+    );
     out.push_str("    match name {\n");
     for n in &levels {
         let data = format!("{root_fwd}/{DEST_REL}/{n}/data.json");
         let walls = format!("{root_fwd}/{DEST_REL}/{n}/Walls.csv");
         let door = format!("{root_fwd}/{DEST_REL}/{n}/Door.csv");
+        let slippy = if dest_dir.join(n).join("Slippy.csv").is_file() {
+            format!("include_str!({:?})", format!("{root_fwd}/{DEST_REL}/{n}/Slippy.csv"))
+        } else {
+            "\"\"".to_string()
+        };
         out.push_str(&format!(
-            "        {n:?} => (include_str!({data:?}), include_str!({walls:?}), include_str!({door:?})),\n"
+            "        {n:?} => (include_str!({data:?}), include_str!({walls:?}), include_str!({door:?}), {slippy}),\n"
         ));
     }
     out.push_str("        _ => panic!(\"Unknown level folder: {name}\"),\n");

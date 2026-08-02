@@ -4,13 +4,14 @@
 	"x": -1,
 	"y": -1,
 	"width": 640,
-	"height": 128,
+	"height": 256,
 	"bgColor": "#222225",
 	"neighbourLevels": [],
 	"customFields" : {},
 	"layers": [
 		"Background.png",
 		"Walls.png",
+		"Slippy.png",
 		"Door.png"
 	],
 	"entities" : {}

@@ -1,0 +1,18 @@
+{
+	"identifier": "Zen_Platforms_LRELRX",
+	"uniqueIdentifer": "77fe8830-6fc0-11f1-8d97-f7bf5d2bf7ae",
+	"x": -1,
+	"y": -1,
+	"width": 640,
+	"height": 128,
+	"bgColor": "#222225",
+	"neighbourLevels": [],
+	"customFields" : {},
+	"layers": [
+		"Background.png",
+		"Walls.png",
+		"Slippy.png",
+		"Door.png"
+	],
+	"entities" : {}
+}
