@@ -13,12 +13,21 @@ mod zen_fx;
 
 use avian2d::prelude::*;
 use bevy::prelude::*;
+// Only needed when embedding (wasm, or the `embed` feature); otherwise disk.
+#[cfg(any(target_family = "wasm", feature = "embed"))]
 use bevy_embedded_assets::{EmbeddedAssetPlugin, PluginMode};
 
 fn main() {
-    App::new()
-        .add_plugins(EmbeddedAssetPlugin { mode: PluginMode::ReplaceDefault })
-        .add_plugins(
+    let mut app = App::new();
+
+    // Embed assets into the binary for wasm (always) and for standalone native
+    // builds (the `embed` feature). Otherwise — including `cargo run` and
+    // `cargo run --release` — assets load from disk, so edited level art shows up
+    // on the next run instead of lagging a build behind the build.rs asset sync.
+    #[cfg(any(target_family = "wasm", feature = "embed"))]
+    app.add_plugins(EmbeddedAssetPlugin { mode: PluginMode::ReplaceDefault });
+
+    app.add_plugins(
             DefaultPlugins
                 .set(WindowPlugin {
                     primary_window: Some(Window {
@@ -32,7 +41,14 @@ fn main() {
                 })
                 .set(ImagePlugin::default_nearest()),
         )
-        .add_plugins(PhysicsPlugins::default().with_length_unit(16.0))
+        // Interpolate rigid-body transforms between the 64 Hz physics steps so
+        // the player renders smoothly at high/variable framerates (e.g. fullscreen)
+        // instead of stepping against the smoothly-scrolling world.
+        .add_plugins(
+            PhysicsPlugins::default()
+                .with_length_unit(16.0)
+                .set(PhysicsInterpolationPlugin::interpolate_all()),
+        )
         .insert_resource(Gravity(Vec2::NEG_Y * 600.0))
         .add_plugins((
             level::LevelPlugin,
