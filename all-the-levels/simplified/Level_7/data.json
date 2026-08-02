@@ -1,0 +1,57 @@
+{
+	"identifier": "Level_7",
+	"uniqueIdentifer": "7da63be0-6fc0-11f1-8076-638509b5f9dc",
+	"x": -1,
+	"y": -1,
+	"width": 640,
+	"height": 640,
+	"bgColor": "#222225",
+	"neighbourLevels": [],
+	"customFields" : {},
+	"layers": [
+		"Background.png",
+		"Walls.png",
+		"Door.png"
+	],
+	"entities": {
+		"PlayerSpawn": [
+			{
+				"id": "PlayerSpawn",
+				"iid": "3a36d3e0-6fc0-11f1-8076-7d904c7d36ad",
+				"layer": "Entities",
+				"x": 96,
+				"y": 576,
+				"width": 16,
+				"height": 16,
+				"color": 6539085,
+				"customFields" : {}
+			}
+		],
+		"Checkpoint": [
+			{
+				"id": "Checkpoint",
+				"iid": "3c804eb0-6fc0-11f1-8076-4d0a9e31ea85",
+				"layer": "Entities",
+				"x": 272,
+				"y": 576,
+				"width": 16,
+				"height": 16,
+				"color": 39387,
+				"customFields" : {}
+			}
+		],
+		"Key": [
+			{
+				"id": "Key",
+				"iid": "069cb620-fa90-11f0-9c43-31b56269de31",
+				"layer": "Entities",
+				"x": 544,
+				"y": 64,
+				"width": 16,
+				"height": 16,
+				"color": 12470831,
+				"customFields" : {}
+			}
+		]
+	}
+}

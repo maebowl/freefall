@@ -1,0 +1,17 @@
+{
+	"identifier": "Zen_Platforms_Vertical_RERX",
+	"uniqueIdentifer": "f0065630-6fc0-11f1-8076-afca89e323cd",
+	"x": -1,
+	"y": -1,
+	"width": 640,
+	"height": 128,
+	"bgColor": "#222225",
+	"neighbourLevels": [],
+	"customFields" : {},
+	"layers": [
+		"Background.png",
+		"Walls.png",
+		"Door.png"
+	],
+	"entities" : {}
+}

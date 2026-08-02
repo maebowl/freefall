@@ -60,19 +60,6 @@
 				"customFields" : {}
 			}
 		],
-		"Key": [
-			{
-				"id": "Key",
-				"iid": "069cb620-fa90-11f0-9c43-31b56269de31",
-				"layer": "Entities",
-				"x": 512,
-				"y": 80,
-				"width": 16,
-				"height": 16,
-				"color": 12470831,
-				"customFields" : {}
-			}
-		],
 		"PlayerSpawn": [
 			{
 				"id": "PlayerSpawn",
