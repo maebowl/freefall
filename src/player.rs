@@ -27,6 +27,14 @@ pub struct Player;
 #[derive(Component)]
 pub struct GhostPlayer;
 
+/// Small triangle that orbits the player, pointing in the current
+/// movement-input (joystick) direction.
+#[derive(Component)]
+struct DirectionIndicator;
+
+/// Orbit radius (px) of the direction indicator around the player center.
+const INDICATOR_RADIUS: f32 = 15.0;
+
 #[derive(Component)]
 pub struct PlayerState {
     pub grounded: bool,
@@ -85,11 +93,13 @@ pub struct PlayerPlugin;
 impl Plugin for PlayerPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<BufferedInput>()
+            .add_systems(Startup, setup_indicator)
             // Read real input devices in Update (where just_pressed works correctly)
             .add_systems(
                 Update,
                 buffer_input.run_if(in_state(GamePhase::Playing)),
             )
+            .add_systems(Update, update_indicator)
             // Apply movement in FixedUpdate (same schedule as physics engine)
             .add_systems(
                 FixedUpdate,
@@ -116,6 +126,53 @@ pub fn spawn_player(commands: &mut Commands, asset_server: &AssetServer, positio
         Sprite::from_image(asset_server.load("placeholder-sprite.png")),
         Transform::from_translation(position.extend(0.0)),
     ));
+}
+
+/// Spawn the orbiting direction indicator (hidden until there's input).
+fn setup_indicator(
+    mut commands: Commands,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<ColorMaterial>>,
+) {
+    let mesh = meshes.add(Triangle2d::new(
+        Vec2::new(0.0, 4.0),
+        Vec2::new(-3.0, -2.0),
+        Vec2::new(3.0, -2.0),
+    ));
+    let material = materials.add(Color::srgb(1.0, 1.0, 1.0));
+    commands.spawn((
+        DirectionIndicator,
+        Mesh2d(mesh),
+        MeshMaterial2d(material),
+        Transform::from_xyz(0.0, 0.0, 1.0),
+        Visibility::Hidden,
+    ));
+}
+
+/// Orbit the indicator around the player at the movement-input angle, tip
+/// pointing outward. Hidden when there's no input or while not playing.
+fn update_indicator(
+    state: Res<State<GamePhase>>,
+    buf: Res<BufferedInput>,
+    player_q: Query<&Transform, (With<Player>, Without<DirectionIndicator>)>,
+    mut indicator_q: Query<(&mut Transform, &mut Visibility), With<DirectionIndicator>>,
+) {
+    let Ok((mut tf, mut vis)) = indicator_q.single_mut() else {
+        return;
+    };
+    let dir = Vec2::new(buf.move_x, buf.move_y);
+    let Ok(player_tf) = player_q.single() else {
+        *vis = Visibility::Hidden;
+        return;
+    };
+    if *state.get() != GamePhase::Playing || dir.length() < 0.2 {
+        *vis = Visibility::Hidden;
+        return;
+    }
+    let dir = dir.normalize();
+    tf.translation = (player_tf.translation.truncate() + dir * INDICATOR_RADIUS).extend(1.0);
+    tf.rotation = Quat::from_rotation_z(dir.y.atan2(dir.x) - std::f32::consts::FRAC_PI_2);
+    *vis = Visibility::Visible;
 }
 
 /// Runs in Update — reads keyboard/gamepad and buffers for FixedUpdate.
