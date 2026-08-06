@@ -39,10 +39,10 @@ For playable performance, dependencies are optimized even in dev builds (`[profi
 
 | Action | Gamepad | Keyboard |
 |--------|---------|----------|
-| Move | Left Stick | A/D or Arrow Keys |
+| Move | Left Stick | WASD or Arrow Keys |
 | Jump | South (A) | Space |
-| Dash | West (X) | E |
-| Sprint | RT | Left Shift |
+| Dash | West (X) | Left Shift |
+| Sprint | RT | Left Ctrl |
 
 - **Variable jump**: release jump early for a shorter hop
 - **Dash**: eight-way burst, once per ground touch; briefly disables gravity

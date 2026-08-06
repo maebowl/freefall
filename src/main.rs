@@ -29,12 +29,20 @@ fn main() {
     #[cfg(any(target_family = "wasm", feature = "embed"))]
     app.add_plugins(EmbeddedAssetPlugin { mode: PluginMode::ReplaceDefault });
 
+    // On the web, render into the <canvas id="game-canvas"> in index.html.
+    // Ignored on native (no effect off wasm).
+    #[cfg(target_family = "wasm")]
+    let canvas = Some("#game-canvas".to_string());
+    #[cfg(not(target_family = "wasm"))]
+    let canvas = None;
+
     app.add_plugins(
             DefaultPlugins
                 .set(WindowPlugin {
                     primary_window: Some(Window {
                         title: "Freefall".into(),
                         resolution: (1280, 720).into(),
+                        canvas,
                         fit_canvas_to_parent: true,
                         prevent_default_event_handling: true,
                         ..default()

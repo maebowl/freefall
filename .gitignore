@@ -1,5 +1,8 @@
 /target
 
+# Packaged build output (itch.io zips, wasm-bindgen artifacts)
+/dist
+
 # Runtime/user data written by the game (saved name, zen leaderboard)
 .freefall/
 

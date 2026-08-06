@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+    <title>Freefall</title>
+    <style>
+        html, body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background: #111114;
+        }
+        #game-canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+            /* Crisp pixel-art scaling */
+            image-rendering: pixelated;
+            outline: none;
+        }
+        #loader {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #e8e8ea;
+            font-family: system-ui, sans-serif;
+            font-size: 20px;
+            letter-spacing: 0.1em;
+            background: #111114;
+            z-index: 10;
+        }
+        #loader.hidden { display: none; }
+    </style>
+</head>
+<body>
+    <div id="loader">LOADING…</div>
+    <canvas id="game-canvas"></canvas>
+
+    <script type="module">
+        import init from './freefall.js';
+
+        const loader = document.getElementById('loader');
+        const canvas = document.getElementById('game-canvas');
+
+        // winit/browsers emit two benign promise rejections at startup: winit's
+        // "control flow" signal (how it returns from its event loop) and, on
+        // desktop, screen.orientation.lock() being unsupported. Neither is a real
+        // error — keep them out of the console.
+        window.addEventListener('unhandledrejection', (e) => {
+            const r = e.reason;
+            const msg = (r && r.message) || '';
+            if (msg.includes('orientation') || msg.includes('control flow') ||
+                (r && r.name === 'NotSupportedError')) {
+                e.preventDefault();
+            }
+        });
+
+        // Whether init() resolves or "rejects" with winit's control-flow signal,
+        // the app is now running — reveal the canvas. Must never throw (a throw
+        // here would leave the loading overlay stuck on top of the game).
+        function settle(reason) {
+            loader.classList.add('hidden');
+            // Focus the canvas so keyboard input reaches the game inside the iframe.
+            canvas.focus();
+            if (reason !== undefined) {
+                try { console.debug('freefall init settled:', reason && reason.message || reason); }
+                catch (_) { /* ignore un-stringifiable reasons */ }
+            }
+        }
+
+        init().then(settle, settle);
+    </script>
+</body>
+</html>

@@ -31,3 +31,13 @@ bevy_embedded_assets = "0.15"
 # Optimize dependencies in dev builds for playable performance
 [profile.dev.package."*"]
 opt-level = 2
+
+# Size-optimized profile for the web build (used by build-web.ps1). Kept
+# separate from `release` so the native binary stays at opt-level 3 for physics
+# performance while the wasm download shrinks. `cargo build --profile wasm-release`.
+[profile.wasm-release]
+inherits = "release"
+opt-level = "s"     # optimize for size (biggest single win for wasm)
+lto = "thin"        # cross-crate dead-code elimination without a huge build-time hit
+strip = true        # drop symbol names
+panic = "abort"     # no unwinding tables (winit's wasm control-flow uses a JS throw, not a Rust panic)

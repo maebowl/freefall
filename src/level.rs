@@ -261,10 +261,9 @@ fn generate_level(
             sp
         }
         GameMode::Zen => {
-            let seed = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap_or_default()
-                .as_nanos() as u64;
+            // Random per-run seed. rand's entropy source works on both native
+            // and wasm (via getrandom); SystemTime::now() panics on wasm.
+            let seed = rand::random::<u64>();
             level_seed.0 = seed;
 
             let (sp, level_entity, frontier_y, last_exits, rng) =

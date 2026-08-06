@@ -326,12 +326,19 @@ impl Plugin for UiPlugin {
             .add_systems(OnEnter(GamePhase::Generating), reset_timer)
             .add_systems(
                 Update,
-                (start_timer_on_input, tick_timer, update_timer_display, check_pause)
+                (start_timer_on_input, update_timer_display, check_pause)
                     .run_if(in_state(GamePhase::Playing)),
+            )
+            // Tick in FixedUpdate so the timer measures deterministic simulation
+            // time (exact 1/64 s steps, framerate-independent) rather than
+            // wall-clock frame time — this is what replays reproduce.
+            .add_systems(
+                FixedUpdate,
+                tick_timer.run_if(in_state(GamePhase::Playing)),
             )
             .add_systems(Update, animate_rainbow)
             // Level complete
-            .add_systems(OnEnter(GamePhase::LevelComplete), spawn_level_complete)
+            .add_systems(OnEnter(GamePhase::LevelComplete), (spawn_level_complete, freeze_timer_display))
             .add_systems(OnExit(GamePhase::LevelComplete), despawn_marked::<LevelCompleteUi>)
             .add_systems(
                 Update,
@@ -425,46 +432,6 @@ fn rebuild_title_screen(commands: &mut Commands, selected: usize) {
                                 ..default()
                             },
                             TextColor(color),
-                        ));
-                    }
-                });
-
-            // Controls section
-            parent
-                .spawn(Node {
-                    flex_direction: FlexDirection::Column,
-                    align_items: AlignItems::Start,
-                    row_gap: Val::Px(6.0),
-                    margin: UiRect::top(Val::Px(40.0)),
-                    ..default()
-                })
-                .with_children(|section| {
-                    section.spawn((
-                        Text::new("CONTROLS"),
-                        TextFont {
-                            font_size: 28.0,
-                            ..default()
-                        },
-                        TextColor(Color::srgb(0.4, 0.7, 1.0)),
-                    ));
-
-                    let controls = [
-                        "Move          A/D or Left Stick",
-                        "Jump          Space or A button",
-                        "Dash          E or LT",
-                        "Sprint        Shift or RT",
-                        "Wall Jump     Jump while on wall",
-                        "Pause         Escape or Start",
-                    ];
-
-                    for line in &controls {
-                        section.spawn((
-                            Text::new(*line),
-                            TextFont {
-                                font_size: 18.0,
-                                ..default()
-                            },
-                            TextColor(Color::srgb(0.8, 0.8, 0.8)),
                         ));
                     }
                 });
@@ -1356,7 +1323,7 @@ fn start_timer_on_input(
     let has_key = keys.any_pressed([
         KeyCode::ArrowLeft, KeyCode::ArrowRight, KeyCode::ArrowUp, KeyCode::ArrowDown,
         KeyCode::KeyA, KeyCode::KeyD, KeyCode::KeyW, KeyCode::KeyS,
-        KeyCode::Space, KeyCode::KeyE,
+        KeyCode::Space, KeyCode::ShiftLeft,
     ]);
 
     if has_stick || has_gp_button || has_key {
@@ -1398,6 +1365,24 @@ fn update_timer_display(
         for mut t in &mut query {
             **t = text.clone();
         }
+    }
+}
+
+/// On level complete, pin the corner timer to the authoritative `final_time`
+/// so it always matches the completion menu. (The live display stops updating
+/// when we leave Playing, which could otherwise leave it a frame stale.)
+fn freeze_timer_display(
+    timer: Res<SpeedrunTimer>,
+    mut query: Query<&mut Text, With<TimerText>>,
+) {
+    let Some(elapsed) = timer.final_time else {
+        return;
+    };
+    let minutes = (elapsed / 60.0) as u32;
+    let seconds = elapsed % 60.0;
+    let text = format!("{:02}:{:06.3}", minutes, seconds);
+    for mut t in &mut query {
+        **t = text.clone();
     }
 }
 

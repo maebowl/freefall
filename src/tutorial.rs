@@ -131,7 +131,7 @@ fn action_glyph(action: &str, device: InputDevice) -> Option<String> {
         ("JUMP", Keyboard) => "SPACE",
         ("JUMP", PlayStation) => "X",
         ("JUMP", Xbox | Generic) => "A",
-        ("DASH", Keyboard) => "E",
+        ("DASH", Keyboard) => "SHIFT",
         ("DASH", PlayStation) => "L2",
         ("DASH", Xbox | Generic) => "LT",
         _ => return None,

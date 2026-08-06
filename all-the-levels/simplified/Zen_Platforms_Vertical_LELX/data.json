@@ -1,0 +1,18 @@
+{
+	"identifier": "Zen_Platforms_Vertical_LELX",
+	"uniqueIdentifer": "fed8fcb0-6fc0-11f1-8d97-672ebdaa1c48",
+	"x": -1,
+	"y": -1,
+	"width": 640,
+	"height": 256,
+	"bgColor": "#222225",
+	"neighbourLevels": [],
+	"customFields" : {},
+	"layers": [
+		"Background.png",
+		"Walls.png",
+		"Slippy.png",
+		"Door.png"
+	],
+	"entities" : {}
+}

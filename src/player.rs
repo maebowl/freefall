@@ -212,10 +212,10 @@ fn buffer_input(
     } else {
         0.0
     };
-    let kb_walk = keys.pressed(KeyCode::ShiftLeft);
+    let kb_walk = keys.pressed(KeyCode::ControlLeft);
     let kb_jump_pressed = keys.just_pressed(KeyCode::Space);
     let kb_jump_released = keys.just_released(KeyCode::Space);
-    let kb_dash = keys.just_pressed(KeyCode::KeyE);
+    let kb_dash = keys.just_pressed(KeyCode::ShiftLeft);
 
     // Continuous values — overwrite each frame
     buf.move_x = if stick_x.abs() > 0.1 { stick_x } else { kb_x };

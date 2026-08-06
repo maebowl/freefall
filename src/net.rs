@@ -1,9 +1,15 @@
 use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
 
+use crate::replay::FrameInput;
+
+// Networking is native-only; these are unused when compiled for the web.
+#[cfg(not(target_family = "wasm"))]
 use crate::ldtk::CurrentLevel;
+#[cfg(not(target_family = "wasm"))]
 use crate::level::{GameMode, GamePhase};
-use crate::replay::{FrameInput, ReplayData};
+#[cfg(not(target_family = "wasm"))]
+use crate::replay::ReplayData;
 
 const API_URL: &str = "https://freefall.mabelwallin.com/api";
 
