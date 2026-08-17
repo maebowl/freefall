@@ -1,3 +1,10 @@
+//! Deterministic replays.
+//!
+//! Records one input frame per `FixedUpdate` during a run (`ReplayRecorder`),
+//! then plays it back on a "ghost" player that re-runs the exact same physics
+//! from the same seed to reproduce the run. Used by the leaderboard to store
+//! and watch runs.
+
 use avian2d::prelude::*;
 use bevy::prelude::*;
 use serde::{Deserialize, Serialize};

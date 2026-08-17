@@ -1,3 +1,6 @@
+//! Smoothly follows the player (or the replay ghost) with a frame-rate-
+//! independent camera. Registered by `CameraPlugin`.
+
 use bevy::prelude::*;
 
 use crate::player::{GhostPlayer, Player};

@@ -1,3 +1,7 @@
+//! First-run name entry. Collects the player's name (used to tag leaderboard
+//! submissions) and saves it to `~/.freefall/` on native; on wasm the write
+//! silently no-ops, so the web build asks each session.
+
 use std::path::PathBuf;
 
 use bevy::prelude::*;

@@ -1,3 +1,11 @@
+//! Game flow and the world lifecycle.
+//!
+//! Owns the `GamePhase` state machine (menus -> generating -> playing ->
+//! complete) and `GameMode` (Levels vs Zen). Spawns/despawns the world for each
+//! mode — hand-authored Levels and procedural Zen (via `ldtk::build_zen_world`)
+//! — repositions the player on (re)start, detects checkpoint completion, and
+//! grows the Zen tower as you climb.
+
 use std::collections::HashMap;
 
 use avian2d::prelude::*;

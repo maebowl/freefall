@@ -1,3 +1,12 @@
+//! Loads levels and builds the world from LDtk data.
+//!
+//! Turns each level's exported `data.json` + IntGrid CSVs (Walls / Door /
+//! Slippy) into colliders, layer sprites, and entities (player spawn,
+//! checkpoints, keys, wall writing, tutorial triggers). Also holds the Zen
+//! "stitch pieces together" generator (`build_zen_world`). The level registry
+//! it reads (`LEVEL_ORDER`, `ZEN_PIECE_NAMES`, `level_files`) is code-generated
+//! by build.rs — see DOCS/ARCHITECTURE.md, "Adding content".
+
 use avian2d::prelude::*;
 use bevy::prelude::*;
 use rand::rngs::StdRng;

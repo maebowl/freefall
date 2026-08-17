@@ -1,3 +1,10 @@
+//! Online leaderboard client (native only).
+//!
+//! Talks to the Cloudflare Worker at `API_URL` — fetch top-5 times, submit a
+//! run, download a replay — on background threads so the game never blocks.
+//! The whole module is compiled out on wasm (`cfg(not(target_family =
+//! "wasm"))`), so the web build has no online leaderboard.
+
 use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
 

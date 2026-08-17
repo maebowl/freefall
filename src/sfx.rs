@@ -1,3 +1,6 @@
+//! Sound effects. Any system fires a `SfxEvent`; this plays the matching clip
+//! (menu tick/ding, dash whoosh).
+
 use bevy::prelude::*;
 
 #[derive(Message)]

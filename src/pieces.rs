@@ -1,3 +1,11 @@
+//! The original ASCII-art procedural generator for Zen mode: hand-drawn piece
+//! templates (`#` = solid, `v`/`^` = entry/exit openings) stacked into a tower.
+//!
+//! NOTE: live Zen now uses the LDtk stitcher in `ldtk::build_zen_world`. This
+//! module is only reached through `level::build_level`, which the Zen *replay*
+//! path still calls — so Zen replays are generated differently from live Zen
+//! runs. Legacy; kept until the two Zen paths are unified.
+
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
 

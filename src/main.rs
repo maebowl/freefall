@@ -1,3 +1,7 @@
+//! Entry point: builds the Bevy `App`, registers every plugin, and configures
+//! the window, physics (avian2d), and asset embedding. Each `mod` below is one
+//! feature area; see DOCS/ARCHITECTURE.md for how they fit together.
+
 mod camera;
 mod font;
 mod ldtk;

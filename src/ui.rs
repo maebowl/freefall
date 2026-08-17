@@ -1,3 +1,11 @@
+//! All menus, the HUD, and the speedrun timer — the biggest module.
+//!
+//! Each `GamePhase` screen has a spawn system (OnEnter) and an input system
+//! (Update): title, level select, pause, level-complete, and the leaderboard.
+//! Also owns the run timer (`SpeedrunTimer`, ticked in FixedUpdate for
+//! determinism), the on-screen keyboard, and local best-times storage. To find
+//! a screen, search for its `fn spawn_*` / `fn *_input`.
+
 use avian2d::prelude::{Physics, PhysicsTime};
 use bevy::prelude::*;
 

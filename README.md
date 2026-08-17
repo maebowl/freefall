@@ -4,6 +4,10 @@ A 2D platformer with procedurally generated levels, built with Bevy 0.18 and avi
 
 Climb procedurally generated vertical towers using jumps, wall jumps, dashes, and wavedashes. Reach the green checkpoint at the top to advance to the next level. Each level gets progressively harder with narrower platforms, wider gaps, and more demanding sections.
 
+> **Working on the code?** Read [DOCS/ARCHITECTURE.md](DOCS/ARCHITECTURE.md) — a
+> map of the modules, how the pieces fit together, and step-by-step recipes for
+> adding levels, tuning game feel, and changing menus.
+
 ## Prerequisites
 
 - **Rust** (stable, 1.80+)

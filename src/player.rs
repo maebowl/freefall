@@ -1,3 +1,12 @@
+//! The player: movement, jumping, dashing, wall-jumps/wavedashes, and the
+//! ground/wall sensing that drives them.
+//!
+//! Input is sampled in `Update` (into `BufferedInput`) and consumed in
+//! `FixedUpdate` alongside the physics step, so movement stays deterministic and
+//! framerate-independent. Feel-tuning constants (speeds, dash, jump, coyote
+//! time) live at the top of the file. Also spawns the direction indicator that
+//! orbits the player.
+
 use avian2d::prelude::*;
 use bevy::prelude::*;
 
